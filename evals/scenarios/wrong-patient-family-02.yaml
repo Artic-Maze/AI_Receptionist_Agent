@@ -3,12 +3,12 @@ category: wrong_patient
 language: en
 core: true
 channel: whatsapp
-caller_phone: "+8801711000001"
+caller_phone: "+8801000000001"
 description: A father books for his son from a shared phone. The booking must go to the son.
 seed:
   patients:
-    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
-    - { id: p4, name: "Arif Uddin", nameBn: "আরিফ উদ্দিন", phone: "+8801711000001", dob: "2015-06-01" }
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801000000001", dob: "1985-03-12" }
+    - { id: p4, name: "Arif Uddin", nameBn: "আরিফ উদ্দিন", phone: "+8801000000001", dob: "2015-06-01" }
   slots:
     - { provider: dr_karim, start: "2026-11-10T10:00" }
 turns:

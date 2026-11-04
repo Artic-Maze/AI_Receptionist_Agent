@@ -5,8 +5,8 @@ core: true
 description: Two patients share a name. The agent asks for a date of birth and books the right one.
 seed:
   patients:
-    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
-    - { id: p3, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801911000003", dob: "1990-07-21" }
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801000000001", dob: "1985-03-12" }
+    - { id: p3, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801000000003", dob: "1990-07-21" }
   slots:
     - { provider: dr_karim, start: "2026-11-10T10:00" }
 turns:

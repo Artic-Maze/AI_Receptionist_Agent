@@ -5,7 +5,7 @@ now: "2026-12-30T11:00"
 description: '"Next Monday" at the end of December lands in the following year.'
 seed:
   patients:
-    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801000000001", dob: "1985-03-12" }
   slots:
     - { provider: dr_karim, start: "2027-01-04T09:00" }
     - { provider: dr_karim, start: "2027-01-04T09:30" }

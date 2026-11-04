@@ -14,7 +14,7 @@ const TUE_10 = '2026-11-10T04:00:00.000Z';
 const TUE_1030 = '2026-11-10T04:30:00.000Z';
 const TUE_11 = '2026-11-10T05:00:00.000Z';
 const PROVIDER = { id: 'dr_karim', name: 'Dr. Karim' };
-const PATIENT = { id: 'p1', name: 'Rahim Uddin', phone: '+8801711000001' };
+const PATIENT = { id: 'p1', name: 'Rahim Uddin', phone: '+8801000000001' };
 
 function fake() {
   const adapter = new FakeAdapter({ clock: () => NOW });

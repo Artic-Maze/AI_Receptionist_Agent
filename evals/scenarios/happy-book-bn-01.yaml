@@ -5,7 +5,7 @@ core: true
 description: A complete booking request in Bangla, with Bangla numerals.
 seed:
   patients:
-    - { id: p2, name: "Fatema Begum", nameBn: "ফাতেমা বেগম", phone: "+8801811000002", dob: "1978-11-02" }
+    - { id: p2, name: "Fatema Begum", nameBn: "ফাতেমা বেগম", phone: "+8801000000002", dob: "1978-11-02" }
   slots:
     - { provider: dr_karim, start: "2026-11-10T10:00" }
     - { provider: dr_karim, start: "2026-11-10T10:30" }

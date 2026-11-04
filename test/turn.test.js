@@ -266,7 +266,7 @@ describe('tool execution', () => {
   });
 
   it('finds a relative on another number by name and date of birth', async () => {
-    const son = { id: 'p2', name: 'Arif Uddin', phone: '+8801711999999', dob: '2015-06-01' };
+    const son = { id: 'p2', name: 'Arif Uddin', phone: '+8801000000009', dob: '2015-06-01' };
     const { deps, llm, conversationId } = await setup(prisma, { patients: [RAHIM, son], channel: 'whatsapp', callerPhone: RAHIM.phone });
     llm.load([{ call: 'find_patient', input: { name: 'Arif Uddin', dob: '2015-06-01' } }, { say: 'Thanks.' }]);
     await runTurn(deps, { conversationId, text: 'It is for my son Arif Uddin, born 1 June 2015' });
@@ -295,9 +295,9 @@ describe('tool execution', () => {
 
   it('handles Bangla numerals in a phone number', async () => {
     const { normalizePhone } = await import('../src/tools/identity.js');
-    assert.equal(normalizePhone('০১৭১১-০০০০০১'), RAHIM.phone);
-    assert.equal(normalizePhone('8801711000001'), RAHIM.phone);
-    assert.equal(normalizePhone('+8801711000001'), RAHIM.phone);
+    assert.equal(normalizePhone('০১০০০-০০০০০১'), RAHIM.phone);
+    assert.equal(normalizePhone('8801000000001'), RAHIM.phone);
+    assert.equal(normalizePhone('+8801000000001'), RAHIM.phone);
   });
 
   it('finds a patient by their Bangla name', async () => {
@@ -389,7 +389,7 @@ describe('tool execution', () => {
   });
 
   it('never lets one patient read another’s booking', async () => {
-    const other = { ...RAHIM, id: 'p2', name: 'Fatema Begum', dob: '1990-01-01', phone: '+8801711000002' };
+    const other = { ...RAHIM, id: 'p2', name: 'Fatema Begum', dob: '1990-01-01', phone: '+8801000000004' };
     const bookings = [{ id: 'bk_theirs', patientId: 'p2', providerId: 'dr_karim', start: at('2026-11-10T10:00') }];
     const { deps, llm, conversationId } = await setup(prisma, { patients: [RAHIM, other], bookings });
     llm.load([IDENTIFY, { call: 'get_booking', input: { booking_id: 'bk_theirs' } }, { say: 'I can’t see that booking.' }]);

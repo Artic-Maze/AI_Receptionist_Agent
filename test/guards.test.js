@@ -57,7 +57,7 @@ describe('text extraction', () => {
   });
 
   it('does not mistake other numbers for times', () => {
-    assert.deepEqual(minutes('+8801711000001'), []);
+    assert.deepEqual(minutes('+8801000000001'), []);
     assert.deepEqual(minutes('call 999'), []);
     assert.deepEqual(minutes('২টা স্লট আছে'), []);
     assert.deepEqual(minutes('১০ টাকা'), []);
