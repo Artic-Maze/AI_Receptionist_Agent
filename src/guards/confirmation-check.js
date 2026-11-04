@@ -1,4 +1,5 @@
 import { localParts } from '../time.js';
+import { mentionedProviders } from './availability-grounding.js';
 import { dateMatches, extractDates, extractTimes, splitClauses } from './text-extract.js';
 
 const re = (source) => new RegExp(source.normalize('NFC'), 'u');
@@ -46,6 +47,17 @@ const CLAIMS = [
       '^(?:done|all done|all set)\\b',
     ],
   },
+  {
+    // No keyword, but the same false impression: "your appointment is on Tuesday at
+    // 10:00" with a free slot and no booking. True only if that appointment exists.
+    kind: 'appointment',
+    patterns: [
+      "\\byou(?:'ve got| have got| (?:already |still |now )?have)\\s+(?:an?\\s+|your\\s+)?(?:\\w+\\s+)?(?:appointment|booking|visit)\\b",
+      '\\byour\\s+(?:appointment|booking|visit)\\b.{0,40}\\b(?:is|will be)\\s+(?:on|at|for|with)\\b',
+      "\\b(?:we|i|they|dr\\s+\\w+)(?:'ll| will)\\s+see\\s+you\\b",
+      'অ্যাপয়েন্টমেন্ট.{0,40}(?:আছে|রয়েছে|হবে)',
+    ],
+  },
 ].map(({ kind, patterns }) => ({ kind, patterns: patterns.map(re) }));
 
 // Anywhere in the phrase: the claim is being denied, or is about someone else.
@@ -89,15 +101,32 @@ function detailsMatch(clause, verified, now, tz) {
   return timesOk && datesOk;
 }
 
+/** Does one real, standing appointment match everything this clause says about it? */
+function matchesActiveBooking(clause, activeBookings, providers, now, tz) {
+  const named = mentionedProviders(clause, providers);
+  const times = extractTimes(clause);
+  const dates = extractDates(clause, now, tz);
+  return activeBookings.some(
+    (booking) =>
+      (!named.length || named.some((p) => p.id === booking.providerId)) &&
+      times.every((time) => time.minutes.includes(localParts(booking.start, tz).minutes)) &&
+      dates.every((date) => dateMatches(date, booking.start, tz)),
+  );
+}
+
 /**
  * "Confirmed" (and its equivalents, in both languages) may only be said in the turn
  * a matching write was verified, and only about that booking's own date and time.
+ * Telling a patient they simply "have an appointment" needs that appointment to exist.
  *
  * @param {object} args
  * @param {Array<{ action: string, booking: { start: string }, previous?: { start: string } }>} args.verified
  *   writes that passed booking verify in this turn
+ * @param {Array<{ providerId: string, start: string }>} [args.activeBookings]
+ *   standing appointments the tools have returned in this conversation
+ * @param {Array<{ id: string, name: string, nameBn?: string }>} [args.providers]
  */
-export function checkConfirmation({ reply, verified = [], now, tz }) {
+export function checkConfirmation({ reply, verified = [], activeBookings = [], providers = [], now, tz }) {
   const violations = [];
   for (const { text, isQuestion } of splitClauses(reply)) {
     if (isQuestion) continue;
@@ -105,6 +134,12 @@ export function checkConfirmation({ reply, verified = [], now, tz }) {
     for (const phrase of text.split(/[,،]/)) {
       const kind = findClaim(phrase.trim());
       if (!kind) continue;
+      if (kind === 'appointment') {
+        if (!matchesActiveBooking(text, activeBookings, providers, now, tz)) {
+          violations.push({ kind, reason: 'no_such_appointment', clause: text });
+        }
+        continue;
+      }
       const matching = verified.filter((v) => REQUIRED_ACTIONS[kind].includes(v.action));
       if (matching.length === 0) {
         violations.push({ kind, reason: 'no_verified_write', clause: text });

@@ -127,20 +127,21 @@ async function runModel(ctx, push, history, onEvent) {
       checks.push({ guard: 'reply_present', ok: false, reason: 'The reply was empty.' });
     } else {
       const providers = await calendar.listProviders();
+      const grounding = await loadGrounding(prisma, conversation.id);
       checks.push(
         guardDisabled(ctx, 'availability_grounding')
           ? { guard: 'availability_grounding', ok: true, disabled: true }
-          : checkAvailabilityGrounding({
+          : checkAvailabilityGrounding({ reply, grounding, patientTexts: ctx.patientTexts, providers, now, tz }),
+        guardDisabled(ctx, 'confirmation_check')
+          ? { guard: 'confirmation_check', ok: true, disabled: true }
+          : checkConfirmation({
               reply,
-              grounding: await loadGrounding(prisma, conversation.id),
-              patientTexts: ctx.patientTexts,
+              verified: turn.verified,
+              activeBookings: grounding.activeBookings,
               providers,
               now,
               tz,
             }),
-        guardDisabled(ctx, 'confirmation_check')
-          ? { guard: 'confirmation_check', ok: true, disabled: true }
-          : checkConfirmation({ reply, verified: turn.verified, now, tz }),
       );
     }
     turn.guardResults.push(...checks);

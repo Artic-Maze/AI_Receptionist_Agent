@@ -228,6 +228,44 @@ describe('loadGrounding', () => {
     ]);
     assert.equal(bookings.length, 0);
   });
+
+  describe('active bookings', () => {
+    const view = (id, status = 'active', when = start) => ({ id, provider_id: 'dr_karim', start: when, end: when, status });
+    const found = { tool: 'find_patient', input: {}, output: { upcoming_bookings: [view('b1')] } };
+
+    it('keeps a booking that still stands', async () => {
+      const { activeBookings } = await load([found]);
+      assert.deepEqual(activeBookings.map((b) => b.start), [start]);
+    });
+
+    it('drops a booking once it is cancelled, while it can still be mentioned', async () => {
+      const { activeBookings, bookings } = await load([
+        found,
+        { tool: 'cancel_booking', input: {}, output: { booking: view('b1', 'cancelled') } },
+      ]);
+      assert.equal(activeBookings.length, 0);
+      assert.equal(bookings.length, 2);
+    });
+
+    it('swaps the old booking for the new one after a reschedule', async () => {
+      const { activeBookings } = await load([
+        found,
+        {
+          tool: 'reschedule_booking',
+          input: {},
+          output: { booking: view('b2', 'active', later), previous_booking: view('b1') },
+        },
+      ]);
+      assert.deepEqual(activeBookings.map((b) => b.start), [later]);
+    });
+
+    it('adds a newly created booking', async () => {
+      const { activeBookings } = await load([
+        { tool: 'create_booking', input: {}, output: { booking: view('b3') } },
+      ]);
+      assert.equal(activeBookings.length, 1);
+    });
+  });
 });
 
 describe('confirmation check', () => {
@@ -302,6 +340,73 @@ describe('confirmation check', () => {
     const verified = [{ action: 'reschedule', booking: { start: at('2026-11-11T11:00') }, previous: booking }];
     const reply = 'Your appointment has been moved from Tuesday at 10:00 AM to Wednesday at 11:00 AM.';
     assert.equal(check(reply, verified).ok, true);
+  });
+
+  describe('implying an appointment exists, without the word "confirmed"', () => {
+    const standing = [{ providerId: 'dr_karim', start: at('2026-11-10T10:00') }];
+    const implied = (reply, activeBookings = []) =>
+      checkConfirmation({ reply, activeBookings, providers: PROVIDERS, now: NOW, tz: TZ });
+
+    it('blocks it when nothing has been booked', () => {
+      for (const reply of [
+        'Great, your appointment with Dr. Karim is on Tuesday at 10:00 AM.',
+        'Your appointment is at 10:00 AM on Tuesday.',
+        'You have an appointment with Dr. Karim on Tuesday at 10:00 AM.',
+        'You’ve got an appointment on Tuesday.',
+        'We’ll see you on Tuesday at 10:00 AM.',
+        'Dr. Karim will see you on Tuesday.',
+        'আপনার অ্যাপয়েন্টমেন্ট মঙ্গলবার সকাল ১০টায় আছে।',
+        'মঙ্গলবার সকাল ১০টায় আপনার অ্যাপয়েন্টমেন্ট হবে।',
+      ]) {
+        const result = implied(reply);
+        assert.equal(result.ok, false, reply);
+      }
+    });
+
+    it('allows it when that appointment exists', () => {
+      for (const reply of [
+        'You have an appointment with Dr. Karim on Tuesday, November 10, 10:00 AM.',
+        'You already have an appointment on Tuesday at 10:00 AM.',
+        'Your appointment is on Tuesday at 10:00 AM.',
+        'You have an appointment.',
+        'আপনার অ্যাপয়েন্টমেন্ট মঙ্গলবার সকাল ১০টায় আছে।',
+      ]) {
+        assert.equal(implied(reply, standing).ok, true, reply);
+      }
+    });
+
+    it('blocks it when the details differ from the real appointment', () => {
+      for (const reply of [
+        'You have an appointment on Tuesday at 11:00 AM.',
+        'You have an appointment on Wednesday at 10:00 AM.',
+        'You have an appointment with Dr. Nasrin on Tuesday at 10:00 AM.',
+      ]) {
+        const result = implied(reply, standing);
+        assert.equal(result.ok, false, reply);
+        assert.equal(result.violations[0].reason, 'no_such_appointment');
+      }
+    });
+
+    it('requires a single appointment to match, not parts of two', () => {
+      const two = [
+        { providerId: 'dr_karim', start: at('2026-11-10T10:00') },
+        { providerId: 'dr_karim', start: at('2026-11-11T11:00') },
+      ];
+      assert.equal(implied('You have an appointment on Tuesday at 11:00 AM.', two).ok, false);
+    });
+
+    it('leaves honest replies alone', () => {
+      for (const reply of [
+        'You don’t have an appointment on Tuesday.',
+        'You have no appointments.',
+        'Do you have an appointment already?',
+        'If you have an appointment, I can move it.',
+        'Would you like an appointment on Tuesday?',
+        'আপনার কোনো অ্যাপয়েন্টমেন্ট নেই।',
+      ]) {
+        assert.equal(implied(reply).ok, true, reply);
+      }
+    });
   });
 });
 

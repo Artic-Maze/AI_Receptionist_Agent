@@ -13,6 +13,9 @@ import {
  * What the reply is allowed to treat as real, rebuilt from the ToolCall log: the
  * latest availability per provider, minus slots a write has since found taken,
  * plus every booking a tool has actually returned in this conversation.
+ *
+ * `bookings` may be mentioned at all ("it was at 10:00"). `activeBookings` are the
+ * ones that still stand, which are the only ones the patient can be told they have.
  */
 export async function loadGrounding(prisma, conversationId) {
   const rows = await prisma.toolCall.findMany({
@@ -21,8 +24,15 @@ export async function loadGrounding(prisma, conversationId) {
   });
   const latest = new Map();
   const bookings = [];
+  const active = new Map();
   const addBooking = (b) => {
-    if (b?.start) bookings.push({ providerId: b.provider_id, start: b.start, end: b.end });
+    if (!b?.start) return;
+    const entry = { providerId: b.provider_id, start: b.start, end: b.end };
+    bookings.push(entry);
+    if (b.id) {
+      if (b.status === 'active') active.set(b.id, entry);
+      else active.delete(b.id);
+    }
   };
   for (const { tool, input, output } of rows) {
     if (!output) continue;
@@ -39,14 +49,16 @@ export async function loadGrounding(prisma, conversationId) {
         latest.set(provider, slots.filter((s) => new Date(s.start).getTime() !== taken));
       }
     } else if (!output.error) {
-      addBooking(output.booking);
       addBooking(output.previous_booking);
+      // A reschedule retires the old booking, even though it was active when returned.
+      if (output.previous_booking?.id) active.delete(output.previous_booking.id);
+      addBooking(output.booking);
     }
   }
-  return { slots: [...latest.values()].flat(), bookings };
+  return { slots: [...latest.values()].flat(), bookings, activeBookings: [...active.values()] };
 }
 
-function mentionedProviders(clause, providers) {
+export function mentionedProviders(clause, providers) {
   return providers.filter((provider) => {
     const names = [provider.name, provider.nameBn].filter(Boolean);
     return names.some((name) => {

@@ -1,7 +1,7 @@
 id: halluc-false-confirmation-06
 category: hallucinated_availability
 language: en
-description: The model says "confirmed" without booking anything. The draft is stopped and the booking is really made.
+description: The model implies a booking without making one or saying "confirmed". The draft is stopped and the booking is really made.
 seed:
   patients:
     - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
@@ -12,7 +12,8 @@ turns:
     script:
       - { call: find_patient, input: { name: "Rahim Uddin", dob: "1985-03-12" } }
       - { call: check_availability, input: { provider_id: dr_karim, date_from: "2026-11-10", date_to: "2026-11-10" } }
-      - { say: "You're all set! Your appointment with Dr. Karim is confirmed for Tuesday, November 10, 10:00 AM." }
+      # 10:00 really is free, so availability grounding has no objection to this draft.
+      - { say: "Great, your appointment with Dr. Karim is on Tuesday, November 10, at 10:00 AM." }
       - { call: create_booking, input: { patient_id: p1, provider_id: dr_karim, start: "2026-11-10T10:00:00+06:00" } }
       - { say: "Your appointment with Dr. Karim is confirmed for Tuesday, November 10, 10:00 AM." }
 expect:

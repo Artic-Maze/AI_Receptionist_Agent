@@ -41,15 +41,23 @@ describe('agent turn', () => {
     await runTurn(deps, { conversationId, text: 'I need an appointment' });
     llm.load([IDENTIFY, { say: 'Thank you, Rahim. Which doctor?' }]);
     await runTurn(deps, { conversationId, text: 'Rahim Uddin, 12 March 1985' });
+    // A later turn, so the tool call above has to come back from the database.
+    llm.load([{ say: 'Which day would you like?' }]);
+    await runTurn(deps, { conversationId, text: 'Dr. Karim' });
 
-    const [first, second, third] = llm.requests;
-    // Each request must start with exactly the messages of the one before.
-    assert.deepEqual(second.slice(0, first.length), first);
-    assert.deepEqual(third.slice(0, second.length), second);
+    const [first, second, third, fourth] = llm.requests;
+    // Each request must start with exactly the messages of the one before, byte for
+    // byte. This compares strings on purpose: deepEqual ignores key order, and key
+    // order surviving the database is the whole reason messages are stored as json.
+    assert.equal(JSON.stringify(second.slice(0, first.length)), JSON.stringify(first));
+    assert.equal(JSON.stringify(third.slice(0, second.length)), JSON.stringify(second));
+    assert.equal(JSON.stringify(fourth.slice(0, third.length)), JSON.stringify(third));
+    const toolUse = fourth.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).find((b) => b.type === 'tool_use');
+    assert.deepEqual(Object.keys(toolUse.input), ['name', 'dob']);
     assert.equal(first[0].role, 'user');
     assert.equal(first[1].role, 'system');
     // A tool round stays paired, and a system note always follows a user message.
-    for (const request of [first, second, third]) {
+    for (const request of [first, second, third, fourth]) {
       request.forEach((message, i) => {
         if (message.role === 'system') assert.equal(request[i - 1].role, 'user');
         if (Array.isArray(message.content) && message.content[0]?.type === 'tool_use') {
