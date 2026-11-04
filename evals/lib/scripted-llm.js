@@ -16,6 +16,7 @@ export class ScriptedLLM {
   #queue = [];
   #calls = 0;
   requests = [];
+  exhausted = false;
 
   /** Adds the steps for the next turn. */
   load(steps = []) {
@@ -31,7 +32,10 @@ export class ScriptedLLM {
     const step = this.#queue.shift();
     const empty = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
     const base = { usage: empty, model: 'scripted' };
-    if (!step) throw new ScriptExhaustedError();
+    if (!step) {
+      this.exhausted = true;
+      throw new ScriptExhaustedError();
+    }
     if (step.throw) throw new Error(step.throw);
     if (step.stop) return { ...base, content: [], text: '', toolUses: [], stopReason: step.stop };
     if (step.call) {

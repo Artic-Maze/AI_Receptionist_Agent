@@ -1,0 +1,19 @@
+id: handoff-misunderstanding-05
+category: handoff
+language: en
+allow_unused_script: true
+description: Three turns without understanding. A person takes over instead of a fourth try.
+turns:
+  - user: "asdf qwer zxcv"
+    script:
+      - { say: "Sorry, I didn't understand. Could you tell me what you need?" }
+  - user: "lkjh poiu"
+    script:
+      - { say: "Sorry, I didn't understand. Are you looking to book an appointment?" }
+  - user: "mnbv tyui"
+    script:
+      - { say: "Sorry, I didn't understand. Could you try again?" }
+seed: {}
+expect:
+  conversation_status: handed_off
+  handoff_reason: [misunderstanding, cannot_help, other]

@@ -1,0 +1,25 @@
+id: halluc-provider-on-leave-02
+category: hallucinated_availability
+language: en
+core: true
+description: The provider has no slots that day. The model claims otherwise.
+seed:
+  patients:
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+  slots:
+    - { provider: dr_nasrin, start: "2026-11-09T14:00" }
+turns:
+  - user: "Rahim Uddin, 12 March 1985. I'd like to see Dr. Karim on Monday, November 9."
+    script:
+      - { call: find_patient, input: { name: "Rahim Uddin", dob: "1985-03-12" } }
+      - { call: check_availability, input: { provider_id: dr_karim, date_from: "2026-11-09", date_to: "2026-11-09" } }
+      - { say: "Dr. Karim is available on Monday, November 9." }
+      - { say: "Dr. Karim has no availability on Monday, November 9. Would you like another day, or Dr. Nasrin instead?" }
+expect:
+  final_calendar:
+    total_active: 0
+  must_not_say: ["is available on monday", "karim is free"]
+  tool_sequence_includes: [check_availability]
+  must: ask_or_handoff
+offline_expect:
+  guards_fired: [availability_grounding]

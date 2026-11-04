@@ -1,0 +1,35 @@
+id: happy-book-en-02
+category: happy_path
+language: en
+description: A natural back-and-forth over four turns, choosing from the slots offered.
+seed:
+  patients:
+    - { id: p2, name: "Fatema Begum", nameBn: "ফাতেমা বেগম", phone: "+8801811000002", dob: "1978-11-02" }
+  slots:
+    - { provider: dr_nasrin, start: "2026-11-11T14:00" }
+    - { provider: dr_nasrin, start: "2026-11-11T14:30" }
+turns:
+  - user: "I'd like to see a doctor next week."
+    script:
+      - { say: "Of course. Could I have your full name and date of birth?" }
+  - user: "Fatema Begum, 2 November 1978."
+    script:
+      - { call: find_patient, input: { name: "Fatema Begum", dob: "1978-11-02" } }
+      - { say: "Thank you, Fatema. Which doctor would you like to see, and on what day?" }
+  - user: "Dr. Nasrin, any time on Wednesday, November 11."
+    script:
+      - { call: check_availability, input: { provider_id: dr_nasrin, date_from: "2026-11-11", date_to: "2026-11-11" } }
+      - { say: "Dr. Nasrin is free on Wednesday, November 11, at 2:00 PM or 2:30 PM. Which would you prefer?" }
+  - user: "2:30 please."
+    script:
+      - { call: create_booking, input: { patient_id: p2, provider_id: dr_nasrin, start: "2026-11-11T14:30:00+06:00" } }
+      - { say: "Your appointment with Dr. Nasrin is confirmed for Wednesday, November 11, 2:30 PM." }
+expect:
+  final_calendar:
+    bookings_for_p2: 1
+    exact:
+      - { patient: p2, provider: dr_nasrin, start: "2026-11-11T14:30" }
+  tool_sequence_includes: [find_patient, check_availability, create_booking]
+  must_say_any: ["2:30"]
+  conversation_status: active
+  reply_language: en

@@ -1,0 +1,37 @@
+id: happy-book-bn-02
+category: happy_path
+language: bn
+description: A Bangla back-and-forth. The date of birth and the chosen time arrive as Bangla numerals.
+seed:
+  patients:
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+  slots:
+    - { provider: dr_nasrin, start: "2026-11-11T14:00" }
+    - { provider: dr_nasrin, start: "2026-11-11T14:30" }
+turns:
+  - user: "অ্যাপয়েন্টমেন্ট নিতে চাই।"
+    script:
+      - { say: "অবশ্যই। অনুগ্রহ করে আপনার পুরো নাম ও জন্মতারিখ বলুন।" }
+    expect: { language: bn }
+  - user: "রহিম উদ্দিন, ১২/০৩/১৯৮৫"
+    script:
+      - { call: find_patient, input: { name: "রহিম উদ্দিন", dob: "1985-03-12" } }
+      - { say: "ধন্যবাদ। কোন ডাক্তারের কাছে যেতে চান?" }
+    expect: { language: bn }
+  - user: "ডা. নাসরিন, বুধবার ১১ নভেম্বর।"
+    script:
+      - { call: check_availability, input: { provider_id: dr_nasrin, date_from: "2026-11-11", date_to: "2026-11-11" } }
+      - { say: "ডা. নাসরিন বুধবার, ১১ নভেম্বর, দুপুর ২:০০ এবং দুপুর ২:৩০-এ খালি আছেন। কোনটি আপনার জন্য ভালো?" }
+    expect: { language: bn }
+  - user: "২:৩০"
+    script:
+      - { call: create_booking, input: { patient_id: p1, provider_id: dr_nasrin, start: "2026-11-11T14:30:00+06:00" } }
+      - { say: "ডা. নাসরিনের সাথে আপনার অ্যাপয়েন্টমেন্ট বুধবার, ১১ নভেম্বর, দুপুর ২:৩০-এ নিশ্চিত করা হয়েছে।" }
+    expect: { language: bn }
+expect:
+  final_calendar:
+    bookings_for_p1: 1
+    exact:
+      - { patient: p1, provider: dr_nasrin, start: "2026-11-11T14:30" }
+  conversation_status: active
+  reply_language: bn
