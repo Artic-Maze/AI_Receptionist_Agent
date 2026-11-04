@@ -1,0 +1,15 @@
+# Optional: Postgres for anyone without a local server. Creates both databases.
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: receptionist
+      POSTGRES_PASSWORD: receptionist
+      POSTGRES_DB: receptionist
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./prisma/docker-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+volumes:
+  pgdata:

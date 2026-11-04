@@ -1,0 +1,123 @@
+// Six models. The calendar (Cal.com) is the source of truth for bookings, so
+// there is deliberately no Booking table: storing a second copy would create
+// exactly the kind of drift the booking-verify guard exists to catch.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ConversationStatus {
+  active
+  handed_off
+  closed
+}
+
+model Patient {
+  id            String         @id @default(cuid())
+  name          String
+  nameBn        String?        @map("name_bn")
+  /// E.164. Not unique: families share numbers.
+  phone         String
+  /// ISO date, YYYY-MM-DD. A plain string so no time zone can shift it by a day.
+  dob           String?
+  createdAt     DateTime       @default(now()) @map("created_at")
+  conversations Conversation[]
+
+  @@index([phone])
+  @@map("patients")
+}
+
+model Conversation {
+  id         String             @id @default(cuid())
+  /// web | whatsapp | vapi
+  channel    String
+  /// WhatsApp sender number or Vapi call id. Null for the web widget.
+  externalId String?            @map("external_id")
+  /// The one patient the identity gate has resolved, if any.
+  patientId  String?            @map("patient_id")
+  patient    Patient?           @relation(fields: [patientId], references: [id])
+  language   String             @default("en")
+  status     ConversationStatus @default(active)
+  /// Guard counters and the channel's identity hint.
+  state      Json               @default("{}")
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+  messages   Message[]
+  toolCalls  ToolCall[]
+  handoffs   Handoff[]
+
+  @@index([channel, externalId])
+  @@map("conversations")
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  /// user | assistant | system
+  role           String
+  /// chat: seen by patient and model. llm: model only (tool rounds, blocked
+  /// drafts, context notes). display: patient only (code-written replies,
+  /// voice transcripts).
+  kind           String       @default("chat")
+  /// `json`, not `jsonb`: this column is replayed to the model, and jsonb
+  /// reorders object keys. Replayed history must stay exactly as it was sent.
+  content        Json         @db.Json
+  /// WhatsApp message id or Vapi transcript key, so webhook retries are no-ops.
+  externalId     String?      @unique @map("external_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([conversationId, id])
+  @@map("messages")
+}
+
+model ToolCall {
+  id             Int          @id @default(autoincrement())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  tool           String
+  input          Json
+  output         Json?
+  durationMs     Int          @map("duration_ms")
+  error          String?
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([conversationId, id])
+  @@map("tool_calls")
+}
+
+/// Append-only: triggers reject UPDATE, DELETE and TRUNCATE. No foreign keys,
+/// so nothing can cascade into this table.
+model AuditLog {
+  id             Int      @id @default(autoincrement())
+  conversationId String?  @map("conversation_id")
+  actor          String
+  action         String
+  patientId      String?  @map("patient_id")
+  bookingId      String?  @map("booking_id")
+  before         Json?
+  after          Json?
+  guardResults   Json     @default("[]") @map("guard_results")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([conversationId, id])
+  @@map("audit_log")
+}
+
+model Handoff {
+  id             Int          @id @default(autoincrement())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  reason         String
+  detail         String?
+  assignedTo     String?      @map("assigned_to")
+  resolvedAt     DateTime?    @map("resolved_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([resolvedAt])
+  @@map("handoffs")
+}

@@ -1,0 +1,37 @@
+{
+  "name": "receptionist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chat and voice AI receptionist with code-enforced safety guards and a 46-scenario regression suite.",
+  "type": "module",
+  "engines": {
+    "node": "^22.18.0 || >=24.11.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "node prisma/seed.js",
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "evals": "node evals/runner.js",
+    "evals:offline": "node evals/runner.js --llm=scripted",
+    "evals:core": "node evals/runner.js --llm=claude --core",
+    "evals:live": "node evals/runner.js --llm=claude",
+    "evals:mutation": "node evals/mutation.js",
+    "smoke:contract": "node evals/smoke/contract.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.4.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "fastify": "^5.12.8",
+    "pg": "^8.16.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "js-yaml": "^5.5.0",
+    "prisma": "7.10.1"
+  }
+}
