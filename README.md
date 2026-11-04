@@ -2,7 +2,7 @@
 
 A chat and voice receptionist that books, reschedules and cancels appointments in English and Bangla, built with a regression suite: 46 scenarios, with guards for double-booking, wrong-patient and hallucinated availability.
 
-**[Latest regression report](https://artic-maze.github.io/AI_Receptionist_Agent/)** · [Golden dataset](evals/scenarios/) · [Guards](src/guards/)
+[Golden dataset](evals/scenarios/) · [Guards](src/guards/) · [Running the evals](#the-evals)
 
 The evaluation suite is the product. Anyone can demo a booking; the harder question is what happens when a slot disappears mid-conversation, two people share a phone, or the model says "confirmed" when nothing was booked. Each of those is a scenario here, and the safeguards are code, so a patient can't talk the agent past them.
 
@@ -17,7 +17,6 @@ The evaluation suite is the product. Anyone can demo a booking; the harder quest
 | **Scenarios on a real model** | Not yet run | **First live run** |
 | Cal.com adapter | Contract suite against a stub written from the API docs | Contract run against a real sandbox |
 | WhatsApp and Vapi | Tested with their documented payloads | Connecting real accounts |
-| CI | Steps reproduced from a clean checkout | First run on GitHub |
 
 A scripted run shows the guards hold when a model misbehaves. It says nothing about how well a real model handles these conversations, and the report says so at the top of any offline run.
 
@@ -61,7 +60,7 @@ The audit log records every guard result. Postgres triggers reject any `UPDATE`,
 
 46 YAML scenarios replay through the real agent loop, guards and Postgres. Only the calendar is a stand-in, so races and outages can happen on cue.
 
-| Category | Scenarios | Blocks the build |
+| Category | Scenarios | Safety gate |
 | --- | --- | --- |
 | Happy path (English and Bangla) | 10 | |
 | Double-booking | 6 | Yes |
@@ -100,7 +99,7 @@ npm run evals:mutation    # switch off each guard and check that scenarios fail
 
 **Mutation test.** A suite that always passes proves nothing, so this switches off each guard in turn and requires a bad outcome: a wrong calendar, or a false statement reaching the patient. Merely noticing that a guard didn't fire doesn't count.
 
-The report is one static HTML page. CI posts a summary on each pull request and publishes the full report from `main`.
+The report is one static HTML page, written to `evals/report/out/index.html`. A run exits with status 1 if any safety-gate scenario fails, and lists anything that passed last time but fails now. Nothing runs these checks automatically, so run them before merging a change.
 
 ## Run it
 
@@ -158,8 +157,6 @@ npm run evals -- --llm=claude --only=happy-book-en-01 --runs=1
 Tell the assistant to pass on the caller's exact words and speak the result word for word. This runs the whole agent turn, and it's the only setup where the reply guards see what gets said. The individual tools are also exposed (`/vapi/tools/create_booking` and so on), with their pre-tool guards and read-back, but if Vapi's own model calls them, nothing checks what it says out loud. Send server events to `/vapi/events` to store transcripts.
 
 **Cal.com.** Set `CALENDAR_ADAPTER=calcom`, `CALCOM_API_KEY`, and `CALCOM_PROVIDERS` with one event type per provider. `npm run smoke:contract` checks the adapter against your sandbox, creating and cancelling one real booking.
-
-**CI.** Enable GitHub Pages with GitHub Actions as the source so the report can publish. Add `ANTHROPIC_API_KEY` as a repository secret to run scenarios on the real model, which costs money on every pull request. Without it, CI runs offline.
 
 ## Design decisions
 

@@ -1,7 +1,7 @@
 try {
   process.loadEnvFile();
 } catch {
-  // No .env file: rely on the real environment, as CI does.
+  // No .env file: rely on the real environment.
 }
 
 const env = process.env;

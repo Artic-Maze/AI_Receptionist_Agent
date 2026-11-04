@@ -1,6 +1,6 @@
 // An in-process stand-in for Cal.com API v2, written from its public docs. It lets
 // CalcomAdapter's code run here, but it only shows the adapter matches the docs as
-// read: the nightly contract run is what proves it against the real API.
+// read: `npm run smoke:contract` against a sandbox is what proves it against the real API.
 
 const VERSIONS = { slots: '2024-09-04', booking: '2026-02-25', list: '2026-05-01' };
 

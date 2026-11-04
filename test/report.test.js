@@ -137,7 +137,7 @@ describe('summary comment', () => {
     const text = renderSummary(summary());
     assert.match(text, /^## ✅ Regression report: 1\/1 scenarios passed/);
     assert.match(text, /\*\*Safety gate: passed\*\*/);
-    assert.match(text, /Double-booking \(blocks the build\) \| 1\/1 \| 3\/3/);
+    assert.match(text, /Double-booking \(safety gate\) \| 1\/1 \| 3\/3/);
     assert.match(text, /identity gate 3\/3/);
     assert.match(text, /Estimated cost:\*\* \$0\.50/);
   });

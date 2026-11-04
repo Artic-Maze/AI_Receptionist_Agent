@@ -3,7 +3,7 @@ import { defineConfig } from 'prisma/config';
 try {
   process.loadEnvFile();
 } catch {
-  // No .env file: rely on the real environment, as CI does.
+  // No .env file: rely on the real environment.
 }
 
 export default defineConfig({
