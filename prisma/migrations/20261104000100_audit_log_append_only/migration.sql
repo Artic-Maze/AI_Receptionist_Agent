@@ -2,8 +2,7 @@
 -- convention: application code cannot alter history even if it tries.
 CREATE FUNCTION audit_log_reject_change() RETURNS trigger AS $$
 BEGIN
-  RAISE EXCEPTION 'audit_log is append-only: % is not allowed', TG_OP
-    USING ERRCODE = 'restrict_violation';
+  RAISE EXCEPTION 'audit_log is append-only: % is not allowed', TG_OP;
 END;
 $$ LANGUAGE plpgsql;
 
