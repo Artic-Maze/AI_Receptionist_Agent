@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clinic Receptionist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f3f2ee;
+    --surface: #fcfcfb;
+    --ink: #1c1c1a;
+    --ink-soft: #5c5b56;
+    --line: #e1e0d9;
+    --agent: #f0efe9;
+    --accent: #0f5f58;
+    --accent-ink: #ffffff;
+    --accent-soft: #dcecea;
+    --notice: #fdf1dc;
+    --notice-ink: #6b4a06;
+    --error: #a12b2b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #121211;
+      --surface: #1a1a19;
+      --ink: #f0efec;
+      --ink-soft: #b5b4aa;
+      --line: #32322f;
+      --agent: #272725;
+      --accent: #3fb3a6;
+      --accent-ink: #06211e;
+      --accent-soft: #15332f;
+      --notice: #3a2d10;
+      --notice-ink: #f5d48a;
+      --error: #f08b8b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans Bengali", sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .chat {
+    width: 100%;
+    max-width: 560px;
+    height: 100%;
+    max-height: 760px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .title { flex: 1; min-width: 0; }
+  h1 { margin: 0; font-size: 1rem; font-weight: 600; }
+  .subtitle { margin: 0; font-size: .8125rem; color: var(--ink-soft); }
+  .toggle {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px;
+    flex-shrink: 0;
+  }
+  .toggle button {
+    border: 0;
+    background: transparent;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: .8125rem;
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .toggle button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .bubble {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .agent { align-self: flex-start; background: var(--agent); border-bottom-left-radius: 4px; }
+  .user { align-self: flex-end; background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 4px; }
+  .starters { display: flex; flex-wrap: wrap; gap: 8px; }
+  .starters button {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: .875rem;
+    min-height: 40px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .starters button:hover { background: var(--accent-soft); }
+  .progress { align-self: flex-start; font-size: .875rem; color: var(--ink-soft); padding: 2px 4px; }
+  .notice {
+    background: var(--notice);
+    color: var(--notice-ink);
+    font-size: .875rem;
+    padding: 10px 16px;
+    border-top: 1px solid var(--line);
+  }
+  .error { align-self: center; font-size: .875rem; color: var(--error); text-align: center; }
+  form {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 12px;
+    border-top: 1px solid var(--line);
+  }
+  textarea {
+    flex: 1;
+    resize: none;
+    max-height: 120px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+    font: inherit;
+    color: inherit;
+    background: transparent;
+  }
+  .send {
+    border: 0;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: inherit;
+    font-weight: 600;
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+  .send:disabled { opacity: .5; cursor: default; }
+  .restart {
+    border: 0;
+    background: transparent;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: .8125rem;
+    min-height: 32px;
+    padding: 0 4px;
+    text-decoration: underline;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  @media (max-width: 600px) {
+    body { align-items: stretch; }
+    .chat { max-width: none; max-height: none; border: 0; border-radius: 0; }
+  }
+</style>
+</head>
+<body>
+<main class="chat">
+  <header>
+    <div class="title">
+      <h1 id="title"></h1>
+      <p class="subtitle" id="subtitle"></p>
+    </div>
+    <button type="button" class="restart" id="restart"></button>
+    <div class="toggle" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="bn" aria-pressed="false">বাংলা</button>
+    </div>
+  </header>
+  <div class="messages" id="messages" aria-live="polite"></div>
+  <div class="notice" id="notice" hidden></div>
+  <form id="form">
+    <textarea id="input" rows="1" maxlength="2000" autocomplete="off"></textarea>
+    <button class="send" id="send" type="submit"></button>
+  </form>
+</main>
+<script>
+  const TEXT = {
+    en: {
+      title: 'Clinic Receptionist',
+      subtitle: 'AI assistant for appointments. For an emergency, call 999.',
+      greeting: 'Hello! I can book, change or cancel an appointment. How can I help?',
+      placeholder: 'Type your message',
+      send: 'Send',
+      restart: 'New chat',
+      handedOff: 'A member of our staff has this conversation and will reply here.',
+      unreachable: 'I couldn’t reach the clinic. Please try again.',
+      tooMany: 'That’s a lot of messages. Please wait a minute and try again.',
+      failed: 'Something went wrong on our side. Please try again, or call the clinic.',
+      starters: ['Book an appointment', 'Change my appointment', 'Cancel my appointment'],
+      tools: {
+        find_patient: 'Checking your details…',
+        check_availability: 'Checking availability…',
+        create_booking: 'Booking your appointment…',
+        reschedule_booking: 'Moving your appointment…',
+        cancel_booking: 'Cancelling your appointment…',
+        get_booking: 'Checking your booking…',
+        handoff_to_human: 'Connecting you with our staff…',
+        default: 'One moment…',
+      },
+    },
+    bn: {
+      title: 'ক্লিনিক রিসেপশনিস্ট',
+      subtitle: 'অ্যাপয়েন্টমেন্টের জন্য এআই সহকারী। জরুরি প্রয়োজনে ৯৯৯-এ কল করুন।',
+      greeting: 'স্বাগতম! আমি অ্যাপয়েন্টমেন্ট বুক, পরিবর্তন বা বাতিল করতে পারি। কীভাবে সাহায্য করতে পারি?',
+      placeholder: 'আপনার বার্তা লিখুন',
+      send: 'পাঠান',
+      restart: 'নতুন চ্যাট',
+      handedOff: 'আমাদের একজন কর্মী কথোপকথনটি দেখছেন এবং এখানেই উত্তর দেবেন।',
+      unreachable: 'ক্লিনিকের সঙ্গে সংযোগ করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।',
+      tooMany: 'অনেক বেশি বার্তা পাঠানো হয়েছে। অনুগ্রহ করে এক মিনিট পরে আবার চেষ্টা করুন।',
+      failed: 'আমাদের দিকে একটি সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন, অথবা ক্লিনিকে ফোন করুন।',
+      starters: ['অ্যাপয়েন্টমেন্ট বুক করতে চাই', 'অ্যাপয়েন্টমেন্ট পরিবর্তন করতে চাই', 'অ্যাপয়েন্টমেন্ট বাতিল করতে চাই'],
+      tools: {
+        find_patient: 'আপনার তথ্য দেখা হচ্ছে…',
+        check_availability: 'খালি সময় দেখা হচ্ছে…',
+        create_booking: 'অ্যাপয়েন্টমেন্ট বুক করা হচ্ছে…',
+        reschedule_booking: 'অ্যাপয়েন্টমেন্ট পরিবর্তন করা হচ্ছে…',
+        cancel_booking: 'অ্যাপয়েন্টমেন্ট বাতিল করা হচ্ছে…',
+        get_booking: 'বুকিং দেখা হচ্ছে…',
+        handoff_to_human: 'আমাদের কর্মীর সঙ্গে যুক্ত করা হচ্ছে…',
+        default: 'একটু অপেক্ষা করুন…',
+      },
+    },
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const messages = $('messages');
+  const input = $('input');
+  const send = $('send');
+  const notice = $('notice');
+  const toggles = document.querySelectorAll('.toggle button');
+
+  let language = 'en';
+  let conversationId = null;
+  let busy = false;
+  let handedOff = false;
+  let progress = null;
+
+  function add(className, text) {
+    const element = document.createElement('div');
+    element.className = className;
+    element.textContent = text;
+    messages.append(element);
+    messages.scrollTop = messages.scrollHeight;
+    return element;
+  }
+
+  function showProgress(text) {
+    if (!progress) progress = add('progress', text);
+    progress.textContent = text;
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function clearProgress() {
+    progress?.remove();
+    progress = null;
+  }
+
+  function renderStarters() {
+    messages.querySelector('.starters')?.remove();
+    if (conversationId) return;
+    const row = document.createElement('div');
+    row.className = 'starters';
+    for (const text of TEXT[language].starters) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = text;
+      button.addEventListener('click', () => submit(text));
+      row.append(button);
+    }
+    messages.append(row);
+  }
+
+  function renderChrome() {
+    const t = TEXT[language];
+    document.documentElement.lang = language;
+    document.title = t.title;
+    $('title').textContent = t.title;
+    $('subtitle').textContent = t.subtitle;
+    $('restart').textContent = t.restart;
+    send.textContent = t.send;
+    input.placeholder = t.placeholder;
+    input.setAttribute('aria-label', t.placeholder);
+    notice.textContent = t.handedOff;
+    notice.hidden = !handedOff;
+    toggles.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === language)));
+  }
+
+  function restart() {
+    conversationId = null;
+    handedOff = false;
+    messages.replaceChildren();
+    progress = null;
+    renderChrome();
+    add('bubble agent', TEXT[language].greeting);
+    renderStarters();
+    input.focus();
+  }
+
+  function handleEvent(event, data) {
+    if (event === 'conversation') conversationId = data.id;
+    if (event === 'progress') showProgress(TEXT[language].tools[data.tool] ?? TEXT[language].tools.default);
+    if (event === 'reply') {
+      clearProgress();
+      add('bubble agent', data.text);
+      handedOff = data.handedOff;
+      renderChrome();
+    }
+    if (event === 'error') {
+      clearProgress();
+      add('error', TEXT[language].failed);
+    }
+  }
+
+  async function submit(text) {
+    const message = text.trim();
+    if (!message || busy) return;
+    busy = true;
+    send.disabled = true;
+    messages.querySelector('.starters')?.remove();
+    add('bubble user', message);
+    input.value = '';
+    input.style.height = '';
+    showProgress(TEXT[language].tools.default);
+    try {
+      const response = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, language, ...(conversationId ? { conversationId } : {}) }),
+      });
+      if (!response.ok) {
+        clearProgress();
+        add('error', response.status === 429 ? TEXT[language].tooMany : TEXT[language].failed);
+        return;
+      }
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        let boundary;
+        while ((boundary = buffer.indexOf('\n\n')) >= 0) {
+          const block = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          const event = /^event: (.+)$/m.exec(block)?.[1];
+          const data = /^data: (.+)$/m.exec(block)?.[1];
+          if (event && data) handleEvent(event, JSON.parse(data));
+        }
+      }
+    } catch {
+      add('error', TEXT[language].unreachable);
+    } finally {
+      clearProgress();
+      busy = false;
+      send.disabled = false;
+      input.focus();
+    }
+  }
+
+  $('form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    submit(input.value);
+  });
+
+  input.addEventListener('keydown', (event) => {
+    // Bangla keyboards compose with Enter, which must not send a half-typed word.
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      submit(input.value);
+    }
+  });
+
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = `${input.scrollHeight + 2}px`;
+  });
+
+  toggles.forEach((button) => {
+    button.addEventListener('click', () => {
+      language = button.dataset.lang;
+      renderChrome();
+      if (!conversationId) {
+        messages.replaceChildren();
+        add('bubble agent', TEXT[language].greeting);
+        renderStarters();
+      }
+    });
+  });
+
+  $('restart').addEventListener('click', restart);
+
+  restart();
+</script>
+</body>
+</html>

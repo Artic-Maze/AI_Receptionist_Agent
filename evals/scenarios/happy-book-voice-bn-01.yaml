@@ -1,0 +1,26 @@
+id: happy-book-voice-bn-01
+category: happy_path
+language: bn
+channel: vapi
+caller_phone: "+8801811000002"
+description: A Bangla voice call. Caller ID plus a first name is enough to identify the patient.
+seed:
+  patients:
+    - { id: p2, name: "Fatema Begum", nameBn: "ফাতেমা বেগম", phone: "+8801811000002", dob: "1978-11-02" }
+  slots:
+    - { provider: dr_karim, start: "2026-11-10T10:00" }
+turns:
+  - user: "আমি ফাতেমা। মঙ্গলবার ১০ নভেম্বর সকাল ১০টায় ডা. করিমের কাছে একটা অ্যাপয়েন্টমেন্ট চাই।"
+    script:
+      - { call: find_patient, input: { name: "ফাতেমা" } }
+      - { call: check_availability, input: { provider_id: dr_karim, date_from: "2026-11-10", date_to: "2026-11-10" } }
+      - { call: create_booking, input: { patient_id: p2, provider_id: dr_karim, start: "2026-11-10T10:00:00+06:00" } }
+      - { say: "ডা. করিমের সাথে আপনার অ্যাপয়েন্টমেন্ট মঙ্গলবার, ১০ নভেম্বর, সকাল ১০:০০-এ নিশ্চিত করা হয়েছে।" }
+expect:
+  final_calendar:
+    bookings_for_p2: 1
+    exact:
+      - { patient: p2, provider: dr_karim, start: "2026-11-10T10:00" }
+  resolved_patient: p2
+  conversation_status: active
+  reply_language: bn

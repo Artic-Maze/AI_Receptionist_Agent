@@ -1,0 +1,24 @@
+id: double-book-duplicate-call-05
+category: double_booking
+language: en
+description: The model calls create_booking twice for the same slot. There must be one booking.
+seed:
+  patients:
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+  slots:
+    - { provider: dr_karim, start: "2026-11-10T10:00" }
+    - { provider: dr_karim, start: "2026-11-10T10:30" }
+turns:
+  - user: "Rahim Uddin, 12 March 1985. Book me with Dr. Karim on Tuesday, November 10 at 10 am."
+    script:
+      - { call: find_patient, input: { name: "Rahim Uddin", dob: "1985-03-12" } }
+      - { call: check_availability, input: { provider_id: dr_karim, date_from: "2026-11-10", date_to: "2026-11-10" } }
+      - { call: create_booking, input: { patient_id: p1, provider_id: dr_karim, start: "2026-11-10T10:00:00+06:00" } }
+      - { call: create_booking, input: { patient_id: p1, provider_id: dr_karim, start: "2026-11-10T10:00:00+06:00" } }
+      - { say: "Your appointment with Dr. Karim is confirmed for Tuesday, November 10, 10:00 AM." }
+expect:
+  final_calendar:
+    bookings_for_p1: 1
+    total_active: 1
+offline_expect:
+  audit_includes: [booking.create_idempotent]

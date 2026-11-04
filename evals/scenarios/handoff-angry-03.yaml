@@ -1,0 +1,15 @@
+id: handoff-angry-03
+category: handoff
+language: en
+description: An upset patient. No keyword catches this one, so the model has to hand off itself.
+seed:
+  patients:
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+turns:
+  - user: "This is ridiculous. I have been trying to book for an hour and your service is useless!"
+    script:
+      - { call: handoff_to_human, input: { reason: angry_user, detail: "Patient is upset about booking delays." } }
+expect:
+  tool_sequence_includes: [handoff_to_human]
+  conversation_status: handed_off
+  handoff_reason: [angry_user, user_request, cannot_help, other]

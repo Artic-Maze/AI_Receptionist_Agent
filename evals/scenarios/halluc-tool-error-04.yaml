@@ -1,0 +1,27 @@
+id: halluc-tool-error-04
+category: hallucinated_availability
+language: en
+allow_unused_script: true
+description: The calendar is down, so there is nothing true to say about availability. A person takes over.
+seed:
+  patients:
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+  slots:
+    - { provider: dr_karim, start: "2026-11-10T10:00" }
+inject:
+  - { before_tool: check_availability, action: error, times: 2 }
+turns:
+  - user: "Rahim Uddin, 12 March 1985. Is Dr. Karim free on Tuesday, November 10?"
+    script:
+      - { call: find_patient, input: { name: "Rahim Uddin", dob: "1985-03-12" } }
+      - { call: check_availability, input: { provider_id: dr_karim, date_from: "2026-11-10", date_to: "2026-11-10" } }
+      # Only reached if the guard is removed.
+      - { say: "Dr. Karim is free at 10:00 AM on Tuesday, November 10." }
+expect:
+  final_calendar:
+    total_active: 0
+  must_not_say: ["is free at 10:00", "is confirmed"]
+  guards_fired: [handoff_triggers]
+  conversation_status: handed_off
+  handoff_reason: tool_error
+  audit_includes: [tool.failed]

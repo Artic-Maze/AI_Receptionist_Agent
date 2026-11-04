@@ -1,0 +1,29 @@
+id: wrong-patient-repeated-failure-05
+category: wrong_patient
+language: en
+allow_unused_script: true
+description: Details keep failing to match. After two tries, a person takes over.
+seed:
+  patients:
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+  slots:
+    - { provider: dr_karim, start: "2026-11-10T10:00" }
+turns:
+  - user: "I'm Rahim Uddin, born 1 January 2000."
+    script:
+      - { call: find_patient, input: { name: "Rahim Uddin", dob: "2000-01-01" } }
+      - { say: "I couldn't find those details. Could you check your date of birth?" }
+  - user: "Maybe 2 January 2000."
+    script:
+      - { call: find_patient, input: { name: "Rahim Uddin", dob: "2000-01-02" } }
+      - { say: "I still couldn't find those details. Could you check again?" }
+  - user: "3 January 2000 then."
+    script:
+      - { call: find_patient, input: { name: "Rahim Uddin", dob: "2000-01-03" } }
+      # Only reached if the guard is removed: the agent keeps guessing with the patient.
+      - { say: "Please try another date." }
+expect:
+  final_calendar:
+    total_active: 0
+  conversation_status: handed_off
+  handoff_reason: [identity_unresolved, cannot_help, other]

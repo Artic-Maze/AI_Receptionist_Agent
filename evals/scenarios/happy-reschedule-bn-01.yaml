@@ -1,0 +1,26 @@
+id: happy-reschedule-bn-01
+category: happy_path
+language: bn
+description: A reschedule in Bangla, mentioning both the old and the new time.
+seed:
+  patients:
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+  slots:
+    - { provider: dr_karim, start: "2026-11-10T10:00" }
+    - { provider: dr_karim, start: "2026-11-11T11:00" }
+  bookings:
+    - { id: bk_seed1, patient: p1, provider: dr_karim, start: "2026-11-10T10:00" }
+turns:
+  - user: "আমি রহিম উদ্দিন, জন্ম ১২ মার্চ ১৯৮৫। আমার মঙ্গলবারের অ্যাপয়েন্টমেন্টটি বুধবার ১১ নভেম্বর সকাল ১১টায় সরিয়ে দিন।"
+    script:
+      - { call: find_patient, input: { name: "রহিম উদ্দিন", dob: "1985-03-12" } }
+      - { call: check_availability, input: { provider_id: dr_karim, date_from: "2026-11-11", date_to: "2026-11-11" } }
+      - { call: reschedule_booking, input: { booking_id: bk_seed1, new_start: "2026-11-11T11:00:00+06:00" } }
+      - { say: "আপনার অ্যাপয়েন্টমেন্ট মঙ্গলবার, ১০ নভেম্বর, সকাল ১০:০০ থেকে সরিয়ে বুধবার, ১১ নভেম্বর, সকাল ১১:০০-এ পরিবর্তন করা হয়েছে।" }
+expect:
+  final_calendar:
+    bookings_for_p1: 1
+    exact:
+      - { patient: p1, provider: dr_karim, start: "2026-11-11T11:00" }
+  conversation_status: active
+  reply_language: bn
