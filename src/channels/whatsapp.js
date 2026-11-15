@@ -5,6 +5,7 @@ import { normalizePhone } from '../tools/identity.js';
 
 const TEXT_ONLY = {
   en: 'I can only read text messages at the moment. Please type your request.',
+  es: 'Por ahora solo puedo leer mensajes de texto. Escriba su solicitud, por favor.',
   bn: 'আমি এই মুহূর্তে শুধু লেখা বার্তা পড়তে পারি। অনুগ্রহ করে আপনার অনুরোধটি লিখে পাঠান।',
 };
 

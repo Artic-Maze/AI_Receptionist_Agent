@@ -28,7 +28,7 @@ export const GUARDS = [
 ];
 
 const Guard = z.enum(GUARDS);
-const Language = z.enum(['en', 'bn']);
+const Language = z.enum(['en', 'es', 'bn']);
 const OneOrMany = z.union([z.string(), z.array(z.string())]);
 
 const Step = z.union([

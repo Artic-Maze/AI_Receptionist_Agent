@@ -19,6 +19,12 @@ const MONTHS_BN = [
   'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
   'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর',
 ];
+// Lower case, as Spanish writes them.
+const WEEKDAYS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MONTHS_ES = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
 const WEEKDAY_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 const formatters = new Map();
@@ -128,13 +134,14 @@ function bnPeriod(hour) {
   return 'রাত';
 }
 
-/** A wall-clock time, given as minutes after midnight: "9:00 AM", "সকাল ৯:০০". */
+/** A wall-clock time, given as minutes after midnight: "9:00 AM", "9:00 a. m.", "সকাল ৯:০০". */
 export function clockLabels(minutes) {
   const hour = Math.floor(minutes / 60) % 24;
   const hour12 = hour % 12 === 0 ? 12 : hour % 12;
   const mm = String(minutes % 60).padStart(2, '0');
   return {
     en: `${hour12}:${mm} ${hour < 12 ? 'AM' : 'PM'}`,
+    es: `${hour12}:${mm} ${hour < 12 ? 'a. m.' : 'p. m.'}`,
     bn: `${bnPeriod(hour)} ${toBnDigits(hour12)}:${toBnDigits(mm)}`,
   };
 }
@@ -145,8 +152,10 @@ export function labelParts(instant, tz) {
   const time = clockLabels(p.minutes);
   return {
     date_en: `${WEEKDAYS_EN[p.weekday]}, ${MONTHS_EN[p.month - 1]} ${p.day}`,
+    date_es: `${WEEKDAYS_ES[p.weekday]}, ${p.day} de ${MONTHS_ES[p.month - 1]}`,
     date_bn: `${WEEKDAYS_BN[p.weekday]}, ${toBnDigits(p.day)} ${MONTHS_BN[p.month - 1]}`,
     time_en: time.en,
+    time_es: time.es,
     time_bn: time.bn,
   };
 }
@@ -156,6 +165,7 @@ export function displayLabels(instant, tz) {
   const label = labelParts(instant, tz);
   return {
     display_en: `${label.date_en}, ${label.time_en}`,
+    display_es: `${label.date_es}, ${label.time_es}`,
     display_bn: `${label.date_bn}, ${label.time_bn}`,
   };
 }

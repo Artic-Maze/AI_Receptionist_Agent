@@ -1,6 +1,6 @@
 # AI Receptionist Agent
 
-A chat and voice receptionist that books, reschedules and cancels appointments in English and Bangla, built with a regression suite: 46 scenarios, with guards for double-booking, wrong-patient and hallucinated availability.
+A chat and voice receptionist that books, reschedules and cancels appointments in English, Spanish and Bangla, built with a regression suite: 46 scenarios, with guards for double-booking, wrong-patient and hallucinated availability.
 
 [Golden dataset](evals/scenarios/) · [Guards](src/guards/) · [Running the evals](#the-evals)
 
@@ -15,6 +15,7 @@ The evaluation suite is the product. Anyone can demo a booking; the harder quest
 | Web widget | Driven in headless Chrome with a scripted model | |
 | Demo calendar (Postgres) | Same contract suite, plus races and failed reschedules, against Postgres | |
 | Registration from chat | Turn tests on a scripted model | Not in the scenario suite yet |
+| Spanish | Guard and turn tests on a scripted model | Not in the scenario suite yet |
 | **Claude integration** | Request format checked against a local stub | **First run against the real API** |
 | **Scenarios on a real model** | Not yet run | **First live run** |
 | Cal.com adapter | Contract suite against a stub written from the API docs | Contract run against a real sandbox |
@@ -53,7 +54,7 @@ Replies are never streamed word by word, because no text may reach the patient u
 | [Identity gate](src/guards/identity-gate.js) | Before any booking tool | Exactly one patient is verified, by two identifiers, and any booking touched is theirs | Asks a question; hands off after two tries |
 | [Booking verify](src/guards/booking-verify.js) | After every write | Reads the booking back and compares patient, provider and time | Blocks confirmation, undoes a new booking, hands off |
 | [Availability grounding](src/guards/availability-grounding.js) | Before a reply is sent | Every date and time offered exists in tool results, matched as a date, time and provider together | Regenerates once, then hands off |
-| [Confirmation check](src/guards/confirmation-check.js) | Before a reply is sent | "Confirmed", "booked" and similar, in either language, only after a verified write this turn. "You have an appointment" only if it exists | Regenerates once, then hands off |
+| [Confirmation check](src/guards/confirmation-check.js) | Before a reply is sent | "Confirmed", "booked" and similar, in any of the three languages, only after a verified write this turn. "You have an appointment" only if it exists | Regenerates once, then hands off |
 | [Handoff triggers](src/guards/handoff-triggers.js) | Every turn | Medical questions, requests for a person, tool failure after a retry, three turns of misunderstanding | Hands off |
 
 The audit log records every guard result. Postgres triggers reject any `UPDATE`, `DELETE` or `TRUNCATE` on it.
@@ -128,6 +129,12 @@ With `CALENDAR_ADAPTER=db` it runs on the demo calendar described below. To chec
 ```bash
 npm run evals -- --llm=claude --only=happy-book-en-01 --runs=1
 ```
+
+## Languages
+
+The website offers English and Spanish. The agent replies in English, Spanish or Bangla, following whichever language the patient writes in. Bangla is recognised by its script. English and Spanish share an alphabet, so common words decide between them, and a message with no clear words, such as a name, keeps the conversation's language. Every guard reads all three languages, and the messages written in code for a handoff exist in each one.
+
+Spanish times are written "10:00 a. m.", and the tools return a ready-made Spanish label for each slot, as they do for English and Bangla. The 46 scenarios are in English and Bangla. Spanish is covered by unit tests of every guard and by turn tests.
 
 ## The demo clinic
 

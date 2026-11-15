@@ -13,6 +13,7 @@ const SlotView = z.object({
   start: isoDateTime,
   end: isoDateTime,
   display_en: z.string(),
+  display_es: z.string(),
   display_bn: z.string(),
 });
 
@@ -25,6 +26,7 @@ const BookingView = z.object({
   end: isoDateTime,
   status: z.enum(['active', 'cancelled']),
   display_en: z.string(),
+  display_es: z.string(),
   display_bn: z.string(),
 });
 

@@ -76,6 +76,13 @@ describe('channels', () => {
       assert.match(llm.requests[0].at(-1).content, /Reply in: Bangla/);
     });
 
+    it('starts in Spanish when the widget asks for it', async () => {
+      const { deps, llm } = await setup(prisma);
+      llm.load([{ say: 'De acuerdo.' }]);
+      await chat(await buildServer(deps), { message: '10:30', language: 'es' });
+      assert.match(llm.requests[0].at(-1).content, /Reply in: Spanish/);
+    });
+
     it('rejects an empty message and an unknown conversation', async () => {
       const { deps } = await setup(prisma);
       assert.equal((await chat(await buildServer(deps), { message: '   ' })).status, 400);
@@ -107,7 +114,7 @@ describe('channels', () => {
       const page = await app.inject({ method: 'GET', url: '/' });
       assert.equal(page.statusCode, 200);
       assert.match(page.headers['content-type'], /text\/html/);
-      assert.match(page.body, /বাংলা/);
+      assert.match(page.body, /Español/);
       assert.match(page.body, /\/api\/clinic/);
       assert.equal((await app.inject({ method: 'GET', url: '/health' })).json().status, 'ok');
       await app.close();
@@ -131,10 +138,17 @@ describe('channels', () => {
 
         assert.equal(body.clinic.timezone, TZ);
         assert.deepEqual(body.days.map((d) => d.date), ['2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08', '2026-11-09', '2026-11-10']);
-        assert.deepEqual(body.days[0], { date: '2026-11-04', label_en: 'Wednesday, November 4', label_bn: 'বুধবার, ৪ নভেম্বর' });
+        assert.deepEqual(body.days[0], {
+          date: '2026-11-04',
+          label_en: 'Wednesday, November 4',
+          label_es: 'miércoles, 4 de noviembre',
+          label_bn: 'বুধবার, ৪ নভেম্বর',
+        });
         const karim = body.providers.find((p) => p.id === 'dr_karim');
         // The booked 10:00 is gone, as it is for the agent; 11 November is beyond the week.
-        assert.deepEqual(karim.slots['2026-11-10'], [{ start: '2026-11-10T10:30:00+06:00', time_en: '10:30 AM', time_bn: 'সকাল ১০:৩০' }]);
+        assert.deepEqual(karim.slots['2026-11-10'], [
+          { start: '2026-11-10T10:30:00+06:00', time_en: '10:30 AM', time_es: '10:30 a. m.', time_bn: 'সকাল ১০:৩০' },
+        ]);
         assert.equal(karim.slots['2026-11-11'], undefined);
         assert.equal(karim.hours, null);
         assert.deepEqual(body.patients, [{ name: 'Fatema Begum', nameBn: 'ফাতেমা বেগম', dob: '1978-11-02', phone: '+8801000000005' }]);
@@ -147,7 +161,17 @@ describe('channels', () => {
         });
         const calendar = new DbCalendarAdapter({ prisma, tz: TZ, clock: () => NOW });
         const [karim] = (await directory({ ...deps, calendar })).providers;
-        assert.deepEqual(karim.hours, [{ weekday: 2, start_en: '9:00 AM', start_bn: 'সকাল ৯:০০', end_en: '1:00 PM', end_bn: 'দুপুর ১:০০' }]);
+        assert.deepEqual(karim.hours, [
+          {
+            weekday: 2,
+            start_en: '9:00 AM',
+            start_es: '9:00 a. m.',
+            start_bn: 'সকাল ৯:০০',
+            end_en: '1:00 PM',
+            end_es: '1:00 p. m.',
+            end_bn: 'দুপুর ১:০০',
+          },
+        ]);
         assert.equal(karim.slots['2026-11-10'].length, 8);
       });
 

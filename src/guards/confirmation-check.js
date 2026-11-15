@@ -1,8 +1,18 @@
 import { localParts } from '../time.js';
 import { mentionedProviders } from './availability-grounding.js';
-import { dateMatches, extractDates, extractTimes, splitClauses } from './text-extract.js';
+import { dateMatches, extractDates, extractTimes, splitClauses, WORD_END, WORD_START } from './text-extract.js';
 
 const re = (source) => new RegExp(source.normalize('NFC'), 'u');
+
+// Spanish building blocks. \w and \b don't know accented letters, so Spanish
+// patterns use these instead.
+const S = WORD_START;
+const E = WORD_END;
+const W = '\\p{L}+';
+// A word that isn't a future or conditional verb: "su cita quedará confirmada" is a promise.
+const NOT_FUTURE = `(?!(?:quedar|ser|estar)[aá]${E})`;
+// What a booking is called.
+const BOOKING_ES = 'cita|reserva|consulta|turno|visita';
 
 // Phrases that tell the patient a change has happened. A bare keyword search would
 // also block honest replies such as "that slot was just booked by someone else", so
@@ -20,6 +30,12 @@ const CLAIMS = [
       'বুকিং সম্পন্ন|বুকিং নিশ্চিত|অ্যাপয়েন্টমেন্ট নিশ্চিত|অ্যাপয়েন্টমেন্ট কনফার্ম|অ্যাপয়েন্টমেন্ট ঠিক',
       'নিশ্চিত করা হয়েছে|নিশ্চিত হয়েছে|নিশ্চিত করেছি|নিশ্চিত করে দিয়েছি',
       'কনফার্ম করা হয়েছে|কনফার্ম হয়েছে|কনফার্ম করেছি|কনফার্ম করে দিয়েছি|কনফার্মড',
+      // Spanish: "está confirmada", "ha quedado reservada", "le he reservado", "le reservé".
+      `${S}(?:est[aá]n?|quedan?|qued[oó]|ha\\s+quedado|han\\s+quedado|fue|fueron|ha\\s+sido|han\\s+sido|ya)\\s+(?:${W}\\s+)?(?:reservad|confirmad|agendad|programad)[oa]s?${E}`,
+      `${S}(?:he|hemos|se\\s+ha|se\\s+han)\\s+(?:${W}\\s+)?(?:reservado|confirmado|agendado|programado)${E}`,
+      `${S}(?:${BOOKING_ES})\\s+(?:${NOT_FUTURE}${W}\\s+){0,3}(?:confirmad|reservad|agendad|programad|hech|list|completad)[oa]s?${E}`,
+      `${S}(?:le|lo|la|les|ya)\\s+(?:reservé|confirmé|agendé|programé)${E}`,
+      `^[¡¿]?\\s*(?:reservad|confirmad)[oa]s?${E}`,
     ],
   },
   {
@@ -29,6 +45,10 @@ const CLAIMS = [
       '\\b(?:appointment|booking)\\s+(?:is\\s+)?(?:\\w+\\s+)?(?:rescheduled|moved)\\b',
       'পরিবর্তন করা হয়েছে|পরিবর্তন করেছি|পরিবর্তন হয়েছে|পরিবর্তন করে দিয়েছি|সরিয়ে দিয়েছি|সরানো হয়েছে',
       'রিশিডিউল করা হয়েছে|রিশিডিউল করেছি|রিশিডিউল হয়েছে',
+      `${S}(?:est[aá]|queda|qued[oó]|ha\\s+quedado|fue|ha\\s+sido)\\s+(?:${W}\\s+)?(?:reprogramad|cambiad|movid|trasladad|modificad)[oa]s?${E}`,
+      `${S}(?:he|hemos|se\\s+ha)\\s+(?:${W}\\s+)?(?:reprogramado|cambiado|movido|trasladado|modificado|pasado)${E}`,
+      `${S}(?:${BOOKING_ES})\\s+(?:${NOT_FUTURE}${W}\\s+){0,3}(?:reprogramad|cambiad|movid|trasladad|modificad)[oa]s?${E}`,
+      `${S}(?:le|lo|la|ya)\\s+(?:cambié|moví|reprogramé|trasladé|pasé)${E}`,
     ],
   },
   {
@@ -38,6 +58,10 @@ const CLAIMS = [
       '\\b(?:appointment|booking)\\s+(?:is\\s+)?(?:\\w+\\s+)?cancell?ed\\b',
       'বাতিল করা হয়েছে|বাতিল করেছি|বাতিল হয়েছে|বাতিল করে দিয়েছি',
       'ক্যানসেল করা হয়েছে|ক্যান্সেল করা হয়েছে|ক্যানসেল করেছি|ক্যান্সেল করেছি',
+      `${S}(?:est[aá]n?|queda|qued[oó]|ha\\s+quedado|fue|ha\\s+sido|han\\s+sido)\\s+(?:${W}\\s+)?(?:cancelad|anulad)[oa]s?${E}`,
+      `${S}(?:he|hemos|se\\s+ha|se\\s+han)\\s+(?:${W}\\s+)?(?:cancelado|anulado)${E}`,
+      `${S}(?:${BOOKING_ES})\\s+(?:${NOT_FUTURE}${W}\\s+){0,3}(?:cancelad|anulad)[oa]s?${E}`,
+      `${S}(?:le|lo|la|ya)\\s+(?:cancelé|anulé)${E}`,
     ],
   },
   {
@@ -45,6 +69,8 @@ const CLAIMS = [
     patterns: [
       "\\b(?:you'?re|you are)\\s+all\\s+set\\b|\\bsee you (?:on|at|then|next)\\b|\\b(?:appointment|booking) is (?:all )?set\\b",
       '^(?:done|all done|all set)\\b',
+      `${S}todo\\s+(?:est[aá]\\s+)?listo${E}|${S}nos\\s+vemos\\s+(?:el|la|a|en|entonces|pronto|ma[nñ]ana)${E}`,
+      `^[¡]?\\s*(?:listo|hecho)${E}`,
     ],
   },
   {
@@ -56,6 +82,9 @@ const CLAIMS = [
       '\\byour\\s+(?:appointment|booking|visit)\\b.{0,40}\\b(?:is|will be)\\s+(?:on|at|for|with)\\b',
       "\\b(?:we|i|they|dr\\s+\\w+)(?:'ll| will)\\s+see\\s+you\\b",
       'অ্যাপয়েন্টমেন্ট.{0,40}(?:আছে|রয়েছে|হবে)',
+      `${S}(?:ya\\s+|todav[ií]a\\s+|a[uú]n\\s+)?tiene\\s+(?:una\\s+|su\\s+|la\\s+)?(?:${W}\\s+)?(?:${BOOKING_ES})${E}`,
+      `${S}su\\s+(?:${BOOKING_ES})${E}.{0,40}${S}(?:es|ser[aá]|est[aá])\\s+(?:el|la|a\\s+las?|para|con)${E}`,
+      `${S}(?:le|lo|la)\\s+(?:esperamos|esperaremos|veremos|atender[aá])${E}`,
     ],
   },
 ].map(({ kind, patterns }) => ({ kind, patterns: patterns.map(re) }));
@@ -67,8 +96,24 @@ const NEGATED = re(
 );
 // Before the claim: it is conditional, not a statement of fact.
 const CONDITIONAL = re(
-  '\\b(?:if|once|when|after|until|will be|would be|need to|needs to|have to|can be|could be|to be)\\b|যদি',
+  '\\b(?:if|once|when|after|until|will be|would be|need to|needs to|have to|can be|could be|to be)\\b|যদি|' +
+    `${S}(?:si|cuando|una\\s+vez\\s+que|en\\s+cuanto|hasta\\s+que|para\\s+que|antes\\s+de\\s+que|` +
+    `despu[eé]s\\s+de\\s+que|necesit[oa]|hay\\s+que|tiene\\s+que|puede\\s+ser|podr[ií]a\\s+ser|para\\s+ser)${E}`,
 );
+
+// Spanish negates right before the verb ("no está confirmada", "aún no le he
+// reservado"), so "no" only counts close to the claim: "No olvide que su cita está
+// confirmada" still makes the claim. Being someone else's counts anywhere.
+const ES_NEGATION_NEAR = re(`${S}(?:no|nunca|jam[aá]s|tampoco|ni)${E}`);
+const ES_SOMEONE_ELSE = re(
+  `${S}(?:otra\\s+persona|otr[oa]\\s+paciente|alguien(?:\\s+m[aá]s)?|ocupad[oa]s?)${E}`,
+);
+
+function negated(phrase, match) {
+  if (NEGATED.test(phrase) || ES_SOMEONE_ELSE.test(phrase)) return true;
+  const near = phrase.slice(Math.max(0, match.index - 12), match.index + match[0].length);
+  return ES_NEGATION_NEAR.test(near);
+}
 
 const REQUIRED_ACTIONS = {
   booked: ['create', 'reschedule'],
@@ -82,7 +127,7 @@ function findClaim(phrase) {
     for (const pattern of patterns) {
       const match = pattern.exec(phrase);
       if (!match) continue;
-      if (NEGATED.test(phrase)) continue;
+      if (negated(phrase, match)) continue;
       if (CONDITIONAL.test(phrase.slice(0, match.index))) continue;
       return kind;
     }
@@ -115,7 +160,7 @@ function matchesActiveBooking(clause, activeBookings, providers, now, tz) {
 }
 
 /**
- * "Confirmed" (and its equivalents, in both languages) may only be said in the turn
+ * "Confirmed" (and its equivalents, in English, Spanish and Bangla) may only be said in the turn
  * a matching write was verified, and only about that booking's own date and time.
  * Telling a patient they simply "have an appointment" needs that appointment to exist.
  *

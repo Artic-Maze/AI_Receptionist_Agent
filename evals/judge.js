@@ -2,6 +2,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { z } from 'zod';
 
+import { LANGUAGE_NAMES } from '../src/agent/state.js';
+
 const Scores = z.object({
   politeness: z.number().int().describe('1 (rude) to 5 (warm and respectful)'),
   clarity: z.number().int().describe('1 (confusing) to 5 (immediately clear about what happens next)'),
@@ -38,7 +40,7 @@ export class Judge {
           {
             role: 'user',
             content:
-              `Score this clinic receptionist's replies. They are expected to be in ${scenario.language === 'bn' ? 'Bangla' : 'English'}` +
+              `Score this clinic receptionist's replies. They are expected to be in ${LANGUAGE_NAMES[scenario.language] ?? 'English'}` +
               ', unless the patient switches language, in which case the reply should follow.\n\n' +
               `<transcript>\n${transcript}\n</transcript>`,
           },

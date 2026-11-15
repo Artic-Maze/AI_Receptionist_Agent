@@ -12,7 +12,7 @@ const WIDGET_PATH = fileURLToPath(new URL('../../web-widget/index.html', import.
 const ChatBody = z.object({
   conversationId: z.string().min(1).max(64).optional(),
   message: z.string().trim().min(1).max(2000),
-  language: z.enum(['en', 'bn']).optional(),
+  language: z.enum(['en', 'es', 'bn']).optional(),
 });
 
 /** Days of free slots the homepage shows, starting today. */
@@ -52,6 +52,7 @@ export async function clinicDirectory(deps) {
         slots[localParts(slot.start, tz).dateKey]?.push({
           start: toLocalIso(slot.start, tz),
           time_en: label.time_en,
+          time_es: label.time_es,
           time_bn: label.time_bn,
         });
       }
@@ -66,8 +67,10 @@ export async function clinicDirectory(deps) {
           ? own.map((h) => ({
               weekday: h.weekday,
               start_en: clockLabels(h.startMinute).en,
+              start_es: clockLabels(h.startMinute).es,
               start_bn: clockLabels(h.startMinute).bn,
               end_en: clockLabels(h.endMinute).en,
+              end_es: clockLabels(h.endMinute).es,
               end_bn: clockLabels(h.endMinute).bn,
             }))
           : null,
@@ -80,7 +83,7 @@ export async function clinicDirectory(deps) {
     clinic: { name: deps.clinicName ?? config.clinicName, timezone: tz },
     days: dates.map((date) => {
       const label = labelParts(parseLocal(`${date}T12:00`, tz), tz);
-      return { date, label_en: label.date_en, label_bn: label.date_bn };
+      return { date, label_en: label.date_en, label_es: label.date_es, label_bn: label.date_bn };
     }),
     providers: withSlots,
     patients,

@@ -544,17 +544,188 @@ describe('handoff triggers', () => {
   it('writes handoff replies in the patient’s language', () => {
     assert.match(handoffMessage('medical_question', 'en'), /999/);
     assert.match(handoffMessage('medical_question', 'bn'), /৯৯৯/);
+    assert.match(handoffMessage('medical_question', 'es'), /No puedo dar consejos médicos.*999/);
     assert.equal(handoffMessage('unknown_reason', 'en'), handoffMessage('default', 'en'));
   });
 
   it('never lets a code-written reply make a claim of its own', () => {
     const reasons = ['medical_emergency', 'medical_question', 'user_request', 'tool_error', 'booking_verify_failed', 'default', 'holding'];
     for (const reason of reasons) {
-      for (const language of ['en', 'bn']) {
+      for (const language of ['en', 'es', 'bn']) {
         const reply = handoffMessage(reason, language);
         assert.equal(checkConfirmation({ reply, verified: [], now: NOW, tz: TZ }).ok, true, reply);
         assert.equal(grounding({ reply }).ok, true, reply);
       }
     }
+  });
+});
+
+describe('Spanish', () => {
+  const minutes = (text) => extractTimes(text).map((t) => t.minutes);
+  const read = (text) => extractDates(text, NOW, TZ).map(({ raw, ...rest }) => rest);
+  const tue10 = slot('dr_karim', '2026-11-10T10:00');
+  const wed11 = slot('dr_karim', '2026-11-11T11:00');
+  const slots = [tue10, wed11];
+  const confirm = (reply, extra = {}) =>
+    checkConfirmation({ reply, verified: [], activeBookings: [], providers: PROVIDERS, now: NOW, tz: TZ, ...extra });
+
+  it('reads Spanish times', () => {
+    assert.deepEqual(minutes('10:00 a. m.'), [[600]]);
+    assert.deepEqual(minutes('4:30 p. m.'), [[990]]);
+    assert.deepEqual(minutes('a las 10 de la mañana'), [[600]]);
+    assert.deepEqual(minutes('a las 4 de la tarde'), [[960]]);
+    assert.deepEqual(minutes('por la tarde, a las 5'), [[1020]]);
+    assert.deepEqual(minutes('10 de la noche'), [[1320]]);
+    assert.deepEqual(minutes('las 10 y media'), [[630, 1350]]);
+    assert.deepEqual(minutes('a las 11 menos cuarto'), [[645, 1365]]);
+    assert.deepEqual(minutes('al mediodía'), [[720]]);
+    assert.deepEqual(minutes('las 12:30 del mediodía'), [[750]]);
+  });
+
+  it('does not mistake other Spanish numbers for times', () => {
+    assert.deepEqual(minutes('las 2 opciones'), []);
+    assert.deepEqual(minutes('el 17 de noviembre'), []);
+    assert.deepEqual(minutes('llame al 999'), []);
+  });
+
+  it('reads Spanish dates, and tells tomorrow from the morning', () => {
+    assert.deepEqual(read('martes, 17 de noviembre'), [{ day: 17, month: 11 }, { weekday: 2 }]);
+    assert.deepEqual(read('el miércoles'), [{ weekday: 3 }]);
+    assert.deepEqual(read('3 de nov.'), [{ day: 3, month: 11 }]);
+    assert.deepEqual(read('mañana'), [{ key: '2026-11-05' }]);
+    assert.deepEqual(read('mañana por la mañana'), [{ key: '2026-11-05' }]);
+    assert.deepEqual(read('por la mañana'), []);
+    assert.deepEqual(read('pasado mañana'), [{ key: '2026-11-06' }]);
+    assert.deepEqual(read('hoy'), [{ key: '2026-11-04' }]);
+  });
+
+  it('keeps the sentence break after a.m., so a claim can’t hide in a question', () => {
+    assert.deepEqual(splitClauses('Booked for 10 a.m. Is there anything else?').map((c) => c.text), [
+      'booked for 10 am.',
+      'is there anything else?',
+    ]);
+    assert.deepEqual(splitClauses('Su cita es a las 10:00 a. m. ¿Algo más?').map((c) => c.text), [
+      'su cita es a las 10:00 am.',
+      '¿algo más?',
+    ]);
+    assert.equal(splitClauses('Dr. Karim at 10 a.m. on Tuesday.').length, 1);
+    const english = 'Your appointment with Dr. Karim is confirmed for Tuesday at 10 a.m. Is there anything else?';
+    assert.equal(confirm(english).ok, false);
+  });
+
+  it('grounds Spanish offers in real slots, date and time together', () => {
+    assert.equal(grounding({ reply: 'El Dr. Karim tiene libre el martes, 10 de noviembre, a las 10:00 a. m.', slots }).ok, true);
+    assert.equal(grounding({ reply: 'El Dr. Karim tiene libre el martes a las 9:30 a. m.', slots }).ok, false);
+    // Tuesday and 11:00 both exist, just not together.
+    assert.equal(grounding({ reply: 'El martes a las 11:00 a. m. está libre.', slots }).ok, false);
+    assert.equal(grounding({ reply: 'El Dr. Karim tiene horas libres el viernes.', slots }).ok, false);
+  });
+
+  it('allows saying a time is not available', () => {
+    for (const reply of [
+      'Lo siento, las 9:00 a. m. del martes ya no están disponibles.',
+      'El Dr. Karim no está disponible el martes a las 9:00 a. m.',
+      'Esa hora, las 9:00 a. m., la acaba de reservar otra persona.',
+      'El Dr. Karim está de vacaciones el viernes.',
+    ]) {
+      assert.equal(grounding({ reply, slots }).ok, true, reply);
+    }
+  });
+
+  it('checks an offer made alongside a refusal', () => {
+    for (const reply of [
+      'Las 9:00 a. m. no están disponibles, pero las 9:30 a. m. sí.',
+      'Las 9:00 a. m. están ocupadas y las 9:30 a. m. están libres.',
+      'El miércoles no tengo nada, le puedo ofrecer el martes a las 9:30 a. m.',
+      'No hay problema, el martes a las 9:30 a. m. está libre.',
+      // The same comma rule now holds in English.
+      'Dr. Karim is not available on Wednesday, I can offer Tuesday at 9:30 AM.',
+    ]) {
+      assert.equal(grounding({ reply, slots }).ok, false, reply);
+    }
+    assert.equal(grounding({ reply: 'El miércoles no tengo nada, le puedo ofrecer el martes a las 10:00 a. m.', slots }).ok, true);
+    assert.equal(grounding({ reply: 'Dr. Karim is not available on Wednesday, I can offer Tuesday at 10:00 AM.', slots }).ok, true);
+  });
+
+  it('blocks a Spanish confirmation with no verified write', () => {
+    for (const reply of [
+      'Su cita con el Dr. Karim está confirmada para el martes a las 10:00 a. m.',
+      'Perfecto, le he reservado una cita con el Dr. Karim el martes.',
+      'Listo, su cita ha quedado reservada.',
+      '¡Confirmado! Nos vemos el martes.',
+      'Le reservé la cita del martes a las 10:00 a. m.',
+      'He cambiado su cita al miércoles a las 11:00 a. m.',
+      'Su cita ha sido cancelada.',
+      'No olvide que su cita está confirmada para el martes.',
+      'Su cita está confirmada para el martes a las 10:00 a. m. ¿Necesita algo más?',
+    ]) {
+      assert.equal(confirm(reply).ok, false, reply);
+    }
+  });
+
+  it('leaves honest Spanish replies alone', () => {
+    for (const reply of [
+      'Su cita todavía no está confirmada.',
+      'Aún no le he reservado nada.',
+      'Esa hora ya está ocupada; la ha reservado otra persona.',
+      '¿Quiere que le reserve las 10:00 a. m.?',
+      'Su cita quedará confirmada en cuanto me diga qué hora prefiere.',
+      'Gracias, ya está registrada. ¿Con qué médico quiere su cita?',
+      'No tiene ninguna cita todavía.',
+      'El horario ha cambiado esta semana.',
+    ]) {
+      assert.equal(confirm(reply).ok, true, reply);
+    }
+  });
+
+  it('allows the claim once the write is verified, and only with its details', () => {
+    const verified = [{ action: 'create', booking: { provider_id: 'dr_karim', start: tue10.start } }];
+    const right = 'Su cita con el Dr. Karim está confirmada para el martes, 10 de noviembre, a las 10:00 a. m.';
+    const wrong = 'Su cita con el Dr. Karim está confirmada para el martes, 10 de noviembre, a las 11:00 a. m.';
+    assert.equal(confirm(right, { verified }).ok, true);
+    assert.equal(confirm(wrong, { verified }).violations[0].reason, 'details_differ_from_verified_booking');
+  });
+
+  it('only says a patient has an appointment when they do', () => {
+    const reply = 'Usted tiene una cita con el Dr. Karim el martes a las 10:00 a. m.';
+    assert.equal(confirm(reply).violations[0].reason, 'no_such_appointment');
+    assert.equal(confirm(reply, { activeBookings: [tue10] }).ok, true);
+    assert.equal(confirm('Su cita es el miércoles a las 11:00 a. m.', { activeBookings: [tue10] }).ok, false);
+  });
+
+  it('hands off Spanish medical questions, emergencies and requests for a person', () => {
+    const cases = {
+      medical_question: [
+        '¿Debo tomar paracetamol antes de la consulta?',
+        '¿Qué medicamento puedo tomar para el dolor de cabeza?',
+        '¿Cuántas pastillas puedo tomar?',
+        '¿Es grave?',
+        '¿Cuáles son los efectos secundarios?',
+      ],
+      medical_emergency: ['Tengo dolor en el pecho', 'No puedo respirar', 'Mi padre se desmayó'],
+      user_request: ['Quiero hablar con una persona', '¿Puedo hablar con alguien?', 'Póngame con la recepcionista'],
+    };
+    for (const [trigger, texts] of Object.entries(cases)) {
+      for (const text of texts) assert.equal(checkPatientMessage(text).trigger, trigger, text);
+    }
+  });
+
+  it('does not hand off an ordinary Spanish booking', () => {
+    for (const text of [
+      '¿Puedo tomar la cita de las 10?',
+      'Tengo fiebre, ¿puedo ver al Dr. Karim mañana?',
+      'Quiero reservar una cita con el Dr. Karim el martes a las 10',
+      '¿Puedo reservar para otra persona?',
+      '¿Debo traer mis medicamentos a la cita?',
+      '¿Eres un humano?',
+    ]) {
+      assert.equal(checkPatientMessage(text).ok, true, text);
+    }
+  });
+
+  it('spots a Spanish reply that did not understand', () => {
+    assert.equal(isMisunderstanding('Lo siento, no le he entendido.'), true);
+    assert.equal(isMisunderstanding('Disculpe, no entendí lo que necesita.'), true);
+    assert.equal(isMisunderstanding('¿Con qué médico quiere la cita?'), false);
   });
 });

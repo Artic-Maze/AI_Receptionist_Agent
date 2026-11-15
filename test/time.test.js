@@ -49,9 +49,10 @@ describe('time helpers', () => {
     assert.equal(end.toISOString(), '2026-11-30T18:00:00.000Z');
   });
 
-  it('labels a slot in both languages', () => {
+  it('labels a slot in every language', () => {
     const labels = displayLabels(parseLocal('2026-11-10T15:30', DHAKA), DHAKA);
     assert.equal(labels.display_en, 'Tuesday, November 10, 3:30 PM');
+    assert.equal(labels.display_es, 'martes, 10 de noviembre, 3:30 p. m.');
     assert.equal(labels.display_bn, 'মঙ্গলবার, ১০ নভেম্বর, বিকাল ৩:৩০');
   });
 
@@ -62,12 +63,14 @@ describe('time helpers', () => {
   });
 
   it('labels a clock time and a slot’s date and time separately', () => {
-    assert.deepEqual(clockLabels(0), { en: '12:00 AM', bn: 'রাত ১২:০০' });
-    assert.deepEqual(clockLabels(13 * 60 + 30), { en: '1:30 PM', bn: 'দুপুর ১:৩০' });
+    assert.deepEqual(clockLabels(0), { en: '12:00 AM', es: '12:00 a. m.', bn: 'রাত ১২:০০' });
+    assert.deepEqual(clockLabels(13 * 60 + 30), { en: '1:30 PM', es: '1:30 p. m.', bn: 'দুপুর ১:৩০' });
     assert.deepEqual(labelParts(parseLocal('2026-11-10T10:00', DHAKA), DHAKA), {
       date_en: 'Tuesday, November 10',
+      date_es: 'martes, 10 de noviembre',
       date_bn: 'মঙ্গলবার, ১০ নভেম্বর',
       time_en: '10:00 AM',
+      time_es: '10:00 a. m.',
       time_bn: 'সকাল ১০:০০',
     });
   });

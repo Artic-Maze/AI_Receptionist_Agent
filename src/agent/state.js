@@ -21,13 +21,50 @@ export function saveConversation(prisma, conversation) {
   return prisma.conversation.update({ where: { id }, data: { patientId, language, status, state } });
 }
 
-/** Decided by script. Digits and punctuation alone keep the conversation's language. */
+// Common words of each language that the other rarely uses. Words both use ("a",
+// "me", "no", "doctor", "hospital") are left out, as they say nothing.
+const ES_WORDS = new Set(
+  (
+    'hola buenas buenos días dias tardes noches gracias favor quiero quisiera necesito puedo puede podría ' +
+    'cita citas consulta reservar reserva cancelar cambiar anular el la los las un una unos unas del al de que qué ' +
+    'es está esta estoy soy mi mis su sus con para por pero porque como cómo cuando cuándo donde dónde hay muy ' +
+    'sí también ya hoy mañana lunes martes miércoles jueves viernes sábado domingo enero febrero marzo abril mayo ' +
+    'junio julio agosto septiembre octubre noviembre diciembre médico médica doctora nací nacimiento llamo nombre ' +
+    'teléfono número vale claro perfecto bien día semana hora horas usted nuevo nueva primera vez registrarme ' +
+    'paciente se le lo y o'
+  ).split(' '),
+);
+const EN_WORDS = new Set(
+  (
+    "hi hello hey thanks thank please want would like need book booking appointment appointments cancel change " +
+    "reschedule the you your is are was were be been it it's this that and or but with for to of in on at from by " +
+    "my i i'm im what when where which who how can could should will do does did have not yes yeah sure " +
+    'today tomorrow morning afternoon evening monday tuesday wednesday thursday friday saturday sunday january ' +
+    'february march april june july august september october november december name born birth phone number new ' +
+    'patient register first time'
+  ).split(' '),
+);
+
+/**
+ * Bangla is told apart by its script. English and Spanish share an alphabet, so
+ * between them the words decide, and a message that gives no evidence either way
+ * (a name, "OK", digits) keeps the conversation's language.
+ */
 export function detectLanguage(text, fallback = 'en') {
   const bangla = (text.match(/[ঀ-৯]/g) ?? []).filter((c) => !/[০-৯]/.test(c)).length;
-  const latin = (text.match(/[A-Za-z]/g) ?? []).length;
+  const latin = (text.match(/\p{Script=Latin}/gu) ?? []).length;
   if (bangla === 0 && latin === 0) return fallback;
-  return bangla >= latin ? 'bn' : 'en';
+  if (bangla >= latin) return 'bn';
+  const words = text.toLowerCase().replace(/[’‘]/g, "'").match(/[\p{L}']+/gu) ?? [];
+  let es = words.filter((w) => ES_WORDS.has(w)).length;
+  const en = words.filter((w) => EN_WORDS.has(w)).length;
+  if (/[¿¡]/.test(text)) es += 2;
+  else if (/[áéíóúñ]/i.test(text)) es += 1;
+  if (es !== en) return es > en ? 'es' : 'en';
+  return fallback === 'es' ? 'es' : 'en';
 }
+
+export const LANGUAGE_NAMES = { en: 'English', es: 'Spanish', bn: 'Bangla' };
 
 const locks = new Map();
 

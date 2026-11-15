@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
+import { detectLanguage } from '../src/agent/state.js';
 import { MAX_TOOL_CALLS_PER_TURN, runTurn } from '../src/agent/turn.js';
 import { MAX_REGISTRATIONS } from '../src/tools/index.js';
 import { createTestPrisma, migrateTestDatabase } from '../evals/lib/db.js';
@@ -185,6 +186,46 @@ describe('agent turn', () => {
     await runTurn(deps, { conversationId, text: '১০' });
     assert.equal((await prisma.conversation.findUnique({ where: { id: conversationId } })).language, 'bn');
     assert.match(llm.requests[1].at(-1).content, /Reply in: Bangla/);
+  });
+
+  it('follows a patient into Spanish, and back to English', async () => {
+    const { deps, llm, conversationId } = await setup(prisma);
+    llm.load([{ say: 'Hola. ¿En qué puedo ayudarle?' }, { say: 'De acuerdo.' }, { say: 'Sure.' }]);
+    const language = async () => (await prisma.conversation.findUnique({ where: { id: conversationId } })).language;
+    await runTurn(deps, { conversationId, text: 'Hola, quiero una cita' });
+    assert.equal(await language(), 'es');
+    assert.match(llm.requests[0].at(-1).content, /Reply in: Spanish/);
+    // A name alone says nothing about language, so Spanish stays.
+    await runTurn(deps, { conversationId, text: 'Rahim Uddin' });
+    assert.equal(await language(), 'es');
+    await runTurn(deps, { conversationId, text: 'Can we speak English instead?' });
+    assert.equal(await language(), 'en');
+  });
+
+  it('books in Spanish, and confirms only what was verified', async () => {
+    const { deps, llm, calendar, conversationId } = await setup(prisma);
+    const confirmed = 'Su cita con el Dr. Karim está confirmada para el martes, 10 de noviembre, a las 10:00 a. m.';
+    llm.load([IDENTIFY, CHECK, BOOK, { say: confirmed }]);
+    const result = await runTurn(deps, {
+      conversationId,
+      text: 'Soy Rahim Uddin, nací el 12 de marzo de 1985. Quiero una cita con el Dr. Karim el martes a las 10.',
+    });
+    assert.equal(result.reply, confirmed);
+    assert.equal(result.handedOff, false);
+    assert.equal((await calendar.listBookingsForPatient('p1')).length, 1);
+  });
+
+  it('holds Spanish replies to the same guards, and hands off in Spanish', async () => {
+    const { deps, llm, calendar, conversationId } = await setup(prisma);
+    llm.load([
+      { say: 'Su cita con el Dr. Karim está confirmada para el martes a las 10:00 a. m.' },
+      { say: 'Listo, su cita ha quedado reservada.' },
+    ]);
+    const result = await runTurn(deps, { conversationId, text: 'Resérveme con el Dr. Karim el martes a las 10, por favor' });
+    assert.equal(result.handedOff, true);
+    assert.equal(result.handoffReason, 'guard_failure');
+    assert.match(result.reply, /Le pongo en contacto con un miembro de nuestro personal/);
+    assert.equal(calendar.snapshot().length, 0);
   });
 
   it('puts the clinic time and verified patient in the turn note', async () => {
@@ -402,6 +443,26 @@ describe('tool execution', () => {
   });
 
   const fired = (result, guard) => result.guardResults.filter((g) => g.guard === guard && !g.ok);
+});
+
+describe('language detection', () => {
+  it('tells Spanish from English by its words, and Bangla by its script', () => {
+    assert.equal(detectLanguage('Hola, quiero una cita con el Dr. Karim', 'en'), 'es');
+    assert.equal(detectLanguage('Sí', 'en'), 'es');
+    assert.equal(detectLanguage('¿Y el martes?', 'en'), 'es');
+    assert.equal(detectLanguage('Book me with Dr. Karim on Tuesday at 10', 'es'), 'en');
+    assert.equal(detectLanguage('Hi, I’m José García, born 3 March 1990', 'es'), 'en');
+    assert.equal(detectLanguage('আমি রহিম উদ্দিন', 'es'), 'bn');
+  });
+
+  it('keeps the conversation’s language when a message gives no evidence', () => {
+    assert.equal(detectLanguage('Rahim Uddin', 'es'), 'es');
+    assert.equal(detectLanguage('Rahim Uddin', 'en'), 'en');
+    assert.equal(detectLanguage('10:30', 'es'), 'es');
+    assert.equal(detectLanguage('Ok, gracias', 'en'), 'es');
+    // Latin script with no evidence is English, as it was before Spanish existed.
+    assert.equal(detectLanguage('OK', 'bn'), 'en');
+  });
 });
 
 describe('registration', () => {
