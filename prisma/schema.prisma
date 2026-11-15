@@ -1,6 +1,9 @@
-// Six models. The calendar (Cal.com) is the source of truth for bookings, so
-// there is deliberately no Booking table: storing a second copy would create
-// exactly the kind of drift the booking-verify guard exists to catch.
+// The calendar is the source of truth for bookings, and the agent never keeps a
+// copy of them: a second copy would create exactly the kind of drift the
+// booking-verify guard exists to catch. With Cal.com, nothing about bookings is
+// stored here. The demo calendar (CALENDAR_ADAPTER=db) lives in the last three
+// models, and only DbCalendarAdapter reads or writes them, so they are the
+// calendar itself rather than a copy of it.
 
 generator client {
   provider = "prisma-client-js"
@@ -24,6 +27,9 @@ model Patient {
   phone         String
   /// ISO date, YYYY-MM-DD. A plain string so no time zone can shift it by a day.
   dob           String?
+  /// A fictional seeded patient, listed publicly on the demo homepage. Never set
+  /// for anyone who registers through a channel.
+  demo          Boolean        @default(false)
   createdAt     DateTime       @default(now()) @map("created_at")
   conversations Conversation[]
 
@@ -120,4 +126,64 @@ model Handoff {
 
   @@index([resolvedAt])
   @@map("handoffs")
+}
+
+// ---- Demo calendar ----------------------------------------------------------
+
+/// A doctor on the demo calendar. With Cal.com, providers come from CALCOM_PROVIDERS.
+model Provider {
+  /// Readable and stable, e.g. dr_karim: the model passes it to tools.
+  id        String            @id
+  name      String
+  nameBn    String?           @map("name_bn")
+  specialty String?
+  createdAt DateTime          @default(now()) @map("created_at")
+  hours     ProviderHours[]
+  bookings  CalendarBooking[]
+
+  @@map("providers")
+}
+
+/// One block of weekly working hours, in clinic time. Slots are cut from it.
+model ProviderHours {
+  id          Int      @id @default(autoincrement())
+  providerId  String   @map("provider_id")
+  provider    Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  /// 0 is Sunday, 6 is Saturday.
+  weekday     Int
+  /// Minutes after midnight in clinic time, so 540 is 09:00.
+  startMinute Int      @map("start_minute")
+  endMinute   Int      @map("end_minute")
+
+  @@index([providerId, weekday])
+  @@map("provider_hours")
+}
+
+enum CalendarBookingStatus {
+  active
+  cancelled
+}
+
+/// A booking on the demo calendar. The migration also adds a unique index on
+/// (provider_id, start_at) for active rows, which the schema language can't
+/// express: two conversations racing for one slot can't both get it.
+///
+/// No foreign key to patients: like Cal.com, the calendar knows a patient only by id.
+model CalendarBooking {
+  id                String                @id @default(cuid())
+  patientId         String                @map("patient_id")
+  providerId        String                @map("provider_id")
+  provider          Provider              @relation(fields: [providerId], references: [id])
+  start             DateTime              @map("start_at")
+  end               DateTime              @map("end_at")
+  status            CalendarBookingStatus @default(active)
+  /// A reschedule retires the booking and creates a new one, as Cal.com does.
+  rescheduledFromId String?               @map("rescheduled_from_id")
+  rescheduledToId   String?               @map("rescheduled_to_id")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  @@index([patientId, status, start])
+  @@index([providerId, start])
+  @@map("calendar_bookings")
 }

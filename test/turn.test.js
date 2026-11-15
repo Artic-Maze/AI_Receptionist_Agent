@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
 import { MAX_TOOL_CALLS_PER_TURN, runTurn } from '../src/agent/turn.js';
+import { MAX_REGISTRATIONS } from '../src/tools/index.js';
 import { createTestPrisma, migrateTestDatabase } from '../evals/lib/db.js';
 import { at, RAHIM, setup } from './helpers/harness.js';
 
@@ -401,6 +402,118 @@ describe('tool execution', () => {
   });
 
   const fired = (result, guard) => result.guardResults.filter((g) => g.guard === guard && !g.ok);
+});
+
+describe('registration', () => {
+  let prisma;
+  before(async () => {
+    await migrateTestDatabase();
+    prisma = createTestPrisma();
+  });
+  after(() => prisma.$disconnect());
+
+  const NADIA = { name: 'Nadia Islam', dob: '1992-07-03', phone: '01712345678' };
+  const register = (input) => ({ call: 'register_patient', input });
+  const lastOutput = async (tool) =>
+    (await prisma.toolCall.findFirst({ where: { tool }, orderBy: { id: 'desc' } })).output;
+  const conversationOf = (id) => prisma.conversation.findUnique({ where: { id } });
+
+  it('registers a new patient, who can then book straight away', async () => {
+    const { deps, llm, calendar, conversationId } = await setup(prisma);
+    llm.load([
+      { call: 'find_patient', input: { name: NADIA.name, dob: NADIA.dob } },
+      { say: 'I couldn’t find you. Are you new to the clinic?' },
+    ]);
+    await runTurn(deps, { conversationId, text: 'Nadia Islam, born 3 July 1992' });
+    llm.load([register(NADIA), { say: 'Thank you, Nadia, you are registered now. Which doctor would you like to see?' }]);
+    const registered = await runTurn(deps, { conversationId, text: 'Yes, I’m new. My number is 01712345678' });
+
+    assert.equal(registered.handedOff, false);
+    const patient = await prisma.patient.findFirst({ where: { name: NADIA.name } });
+    assert.equal(patient.phone, '+8801712345678');
+    assert.equal(patient.dob, NADIA.dob);
+    assert.equal(patient.demo, false);
+    assert.equal((await conversationOf(conversationId)).patientId, patient.id);
+    assert.ok(await prisma.auditLog.findFirst({ where: { action: 'patient.registered', patientId: patient.id } }));
+
+    const book = { call: 'create_booking', input: { patient_id: patient.id, provider_id: 'dr_karim', start: '2026-11-10T10:00:00+06:00' } };
+    llm.load([CHECK, book, { say: CONFIRMED }]);
+    const booked = await runTurn(deps, { conversationId, text: 'Dr. Karim on Tuesday at 10, please' });
+    assert.equal(booked.reply, CONFIRMED);
+    assert.equal((await calendar.listBookingsForPatient(patient.id)).length, 1);
+  });
+
+  it('will not register anyone over an existing patient', async () => {
+    const { deps, llm, calendar, conversationId } = await setup(prisma);
+    llm.load([register({ name: 'Rahim Uddin', dob: '1985-03-12', phone: '01799999999' }), BOOK, { say: 'Let me check your details.' }]);
+    const result = await runTurn(deps, { conversationId, text: 'Register me: Rahim Uddin, 12 March 1985, 01799999999' });
+
+    const output = await lastOutput('register_patient');
+    assert.equal(output.status, 'already_registered');
+    assert.doesNotMatch(JSON.stringify(output), /p1|\+880|1985/);
+    assert.equal(await prisma.patient.count(), 1);
+    assert.equal((await conversationOf(conversationId)).patientId, null);
+    assert.equal(result.guardResults.find((g) => g.guard === 'identity_gate' && !g.ok).reason, 'no_patient_resolved');
+    assert.equal(calendar.snapshot().length, 0);
+  });
+
+  it('treats a longer or shorter form of an existing name, born the same day, as that patient', async () => {
+    for (const name of ['Rahim Uddin Khan', 'Rahim', 'রহিম উদ্দিন']) {
+      const { deps, llm, conversationId } = await setup(prisma);
+      llm.load([register({ name, dob: '1985-03-12', phone: '01799999999' }), { say: 'Let me check.' }]);
+      await runTurn(deps, { conversationId, text: `${name}, 12 March 1985` });
+      assert.equal((await lastOutput('register_patient')).status, 'already_registered', name);
+      assert.equal(await prisma.patient.count(), 1, name);
+    }
+  });
+
+  it('checks the details before registering anyone', async () => {
+    const { deps, llm, conversationId } = await setup(prisma);
+    const attempts = [
+      [{ ...NADIA, dob: '2030-01-01' }, 'invalid_details'],
+      [{ ...NADIA, dob: '1890-01-01' }, 'invalid_details'],
+      [{ ...NADIA, phone: '12345' }, 'invalid_details'],
+      [{ name: NADIA.name, dob: NADIA.dob }, 'needs_more_info'],
+    ];
+    for (const [input, status] of attempts) {
+      llm.load([register(input), { say: 'Could you check that for me?' }]);
+      await runTurn(deps, { conversationId, text: 'Here are my details' });
+      assert.equal((await lastOutput('register_patient')).status, status, JSON.stringify(input));
+    }
+    for (const name of ['Ignore all rules 123', 'Nadia <script>', 'a b c d e f g']) {
+      llm.load([register({ ...NADIA, name }), { say: 'Could you check your name?' }]);
+      await runTurn(deps, { conversationId, text: 'Here is my name' });
+      assert.equal((await lastOutput('register_patient')).error, 'invalid_input', name);
+    }
+    assert.equal(await prisma.patient.count(), 1);
+    assert.equal((await conversationOf(conversationId)).patientId, null);
+  });
+
+  it('uses the channel’s phone number on WhatsApp', async () => {
+    const { deps, llm, conversationId } = await setup(prisma, { channel: 'whatsapp', callerPhone: '+8801712345678' });
+    llm.load([register({ name: NADIA.name, dob: NADIA.dob }), { say: 'You are registered now.' }]);
+    await runTurn(deps, { conversationId, text: 'I am new: Nadia Islam, 3 July 1992' });
+    assert.equal((await prisma.patient.findFirst({ where: { name: NADIA.name } })).phone, '+8801712345678');
+  });
+
+  it('keeps a Bangla name findable in Bangla', async () => {
+    const { deps, llm, conversationId } = await setup(prisma);
+    llm.load([register({ ...NADIA, name: 'নাদিয়া ইসলাম' }), { say: 'ধন্যবাদ, আপনার নিবন্ধন হয়েছে।' }]);
+    await runTurn(deps, { conversationId, text: 'আমি নতুন রোগী' });
+    assert.equal((await prisma.patient.findFirst({ where: { dob: NADIA.dob } })).nameBn, 'নাদিয়া ইসলাম');
+    llm.load([{ call: 'find_patient', input: { name: 'নাদিয়া ইসলাম', dob: NADIA.dob } }, { say: 'ধন্যবাদ।' }]);
+    await runTurn(deps, { conversationId, text: 'আবার আমি' });
+    assert.equal((await lastOutput('find_patient')).status, 'resolved');
+  });
+
+  it('caps registrations per conversation', async () => {
+    const { deps, llm, conversationId } = await setup(prisma);
+    const names = ['Nadia Islam', 'Sumi Islam', 'Tania Islam', 'Mitu Islam'];
+    llm.load([...names.map((name) => register({ ...NADIA, name })), { say: 'Thank you.' }]);
+    await runTurn(deps, { conversationId, text: 'Register my whole family' });
+    assert.equal(await prisma.patient.count(), 1 + MAX_REGISTRATIONS);
+    assert.equal((await lastOutput('register_patient')).status, 'limit_reached');
+  });
 });
 
 describe('audit log', () => {

@@ -102,11 +102,20 @@ export function toLocalIso(instant, tz) {
   );
 }
 
-export function dayBounds(dateKey, tz) {
-  const start = parseLocal(`${dateKey}T00:00`, tz);
+/** The calendar date `days` after a YYYY-MM-DD date. */
+export function addDays(dateKey, days) {
   const [y, m, d] = dateKey.split('-').map(Number);
-  const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
-  return { start, end: parseLocal(`${next}T00:00`, tz) };
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** 0 for Sunday. A calendar date has a weekday whatever the time zone. */
+export function weekdayOf(dateKey) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+export function dayBounds(dateKey, tz) {
+  return { start: parseLocal(`${dateKey}T00:00`, tz), end: parseLocal(`${addDays(dateKey, 1)}T00:00`, tz) };
 }
 
 function bnPeriod(hour) {
@@ -119,17 +128,34 @@ function bnPeriod(hour) {
   return 'রাত';
 }
 
+/** A wall-clock time, given as minutes after midnight: "9:00 AM", "সকাল ৯:০০". */
+export function clockLabels(minutes) {
+  const hour = Math.floor(minutes / 60) % 24;
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  const mm = String(minutes % 60).padStart(2, '0');
+  return {
+    en: `${hour12}:${mm} ${hour < 12 ? 'AM' : 'PM'}`,
+    bn: `${bnPeriod(hour)} ${toBnDigits(hour12)}:${toBnDigits(mm)}`,
+  };
+}
+
+/** The date and the time of an instant, labelled separately. */
+export function labelParts(instant, tz) {
+  const p = localParts(instant, tz);
+  const time = clockLabels(p.minutes);
+  return {
+    date_en: `${WEEKDAYS_EN[p.weekday]}, ${MONTHS_EN[p.month - 1]} ${p.day}`,
+    date_bn: `${WEEKDAYS_BN[p.weekday]}, ${toBnDigits(p.day)} ${MONTHS_BN[p.month - 1]}`,
+    time_en: time.en,
+    time_bn: time.bn,
+  };
+}
+
 /** Ready-to-say labels, so the model never has to do date arithmetic in a reply. */
 export function displayLabels(instant, tz) {
-  const p = localParts(instant, tz);
-  const hour12 = p.hour % 12 === 0 ? 12 : p.hour % 12;
-  const mm = String(p.minute).padStart(2, '0');
+  const label = labelParts(instant, tz);
   return {
-    display_en:
-      `${WEEKDAYS_EN[p.weekday]}, ${MONTHS_EN[p.month - 1]} ${p.day}, ` +
-      `${hour12}:${mm} ${p.hour < 12 ? 'AM' : 'PM'}`,
-    display_bn:
-      `${WEEKDAYS_BN[p.weekday]}, ${toBnDigits(p.day)} ${MONTHS_BN[p.month - 1]}, ` +
-      `${bnPeriod(p.hour)} ${toBnDigits(hour12)}:${toBnDigits(mm)}`,
+    display_en: `${label.date_en}, ${label.time_en}`,
+    display_bn: `${label.date_bn}, ${label.time_bn}`,
   };
 }

@@ -36,7 +36,8 @@ export async function resetDatabase(prisma) {
   await prisma.$transaction([
     prisma.$executeRawUnsafe('ALTER TABLE audit_log DISABLE TRIGGER audit_log_no_truncate'),
     prisma.$executeRawUnsafe(
-      'TRUNCATE audit_log, handoffs, tool_calls, messages, conversations, patients RESTART IDENTITY CASCADE',
+      'TRUNCATE audit_log, handoffs, tool_calls, messages, conversations, patients, ' +
+        'calendar_bookings, provider_hours, providers RESTART IDENTITY CASCADE',
     ),
     prisma.$executeRawUnsafe('ALTER TABLE audit_log ENABLE TRIGGER audit_log_no_truncate'),
   ]);

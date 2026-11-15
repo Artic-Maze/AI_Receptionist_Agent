@@ -93,6 +93,7 @@ describe('ClaudeClient', () => {
     const names = received.body.tools.map((t) => t.name);
     assert.deepEqual(names, [
       'find_patient',
+      'register_patient',
       'check_availability',
       'create_booking',
       'reschedule_booking',

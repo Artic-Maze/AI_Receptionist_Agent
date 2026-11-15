@@ -26,6 +26,28 @@ function nameMatches(query, patient) {
   });
 }
 
+/** E.164 after normalizing: a plus and 8 to 15 digits. */
+export const isPlausiblePhone = (phone) => /^\+\d{8,15}$/.test(phone);
+
+/**
+ * Patients a new registration could be mistaken for: the same date of birth and a
+ * name that contains, or is contained in, theirs. "Rahim Uddin Khan" born the same
+ * day as Rahim Uddin would make every lookup for Rahim ambiguous, so it counts.
+ */
+export async function findRegistrationClash(prisma, { names, dob }) {
+  const rows = await prisma.patient.findMany({ where: { dob }, orderBy: { id: 'asc' } });
+  const wanted = names.map(nameTokens).filter((tokens) => tokens.length);
+  return rows.filter((patient) =>
+    [patient.name, patient.nameBn].filter(Boolean).some((candidate) => {
+      const tokens = nameTokens(candidate);
+      if (!tokens.length) return false;
+      return wanted.some(
+        (mine) => mine.every((t) => tokens.includes(t)) || tokens.every((t) => mine.includes(t)),
+      );
+    }),
+  );
+}
+
 /** Every patient matching ALL of the identifiers given. */
 export async function searchPatients(prisma, { phone, name, dob }) {
   const where = {};

@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 
+import { DbCalendarAdapter } from '../src/calendar/db.js';
 import { TURN_TOOL } from '../src/channels/vapi.js';
 import { buildServer } from '../src/server.js';
 import { createTestPrisma, migrateTestDatabase } from '../evals/lib/db.js';
-import { at, RAHIM, setup } from './helpers/harness.js';
+import { at, NOW, RAHIM, setup, TZ } from './helpers/harness.js';
 
 const IDENTIFY = { call: 'find_patient', input: { name: 'Rahim Uddin', dob: '1985-03-12' } };
 
@@ -107,8 +108,63 @@ describe('channels', () => {
       assert.equal(page.statusCode, 200);
       assert.match(page.headers['content-type'], /text\/html/);
       assert.match(page.body, /বাংলা/);
+      assert.match(page.body, /\/api\/clinic/);
       assert.equal((await app.inject({ method: 'GET', url: '/health' })).json().status, 'ok');
       await app.close();
+    });
+
+    describe('clinic directory', () => {
+      const FATEMA = { id: 'demo_fatema', name: 'Fatema Begum', nameBn: 'ফাতেমা বেগম', phone: '+8801000000005', dob: '1978-11-02', demo: true };
+
+      async function directory(deps) {
+        const app = await buildServer(deps);
+        const response = await app.inject({ method: 'GET', url: '/api/clinic' });
+        await app.close();
+        assert.equal(response.statusCode, 200);
+        return response.json();
+      }
+
+      it('shows a week of free times, and only the demo patients', async () => {
+        const bookings = [{ id: 'bk1', patientId: 'p1', providerId: 'dr_karim', start: at('2026-11-10T10:00') }];
+        const { deps } = await setup(prisma, { patients: [RAHIM, FATEMA], bookings });
+        const body = await directory(deps);
+
+        assert.equal(body.clinic.timezone, TZ);
+        assert.deepEqual(body.days.map((d) => d.date), ['2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08', '2026-11-09', '2026-11-10']);
+        assert.deepEqual(body.days[0], { date: '2026-11-04', label_en: 'Wednesday, November 4', label_bn: 'বুধবার, ৪ নভেম্বর' });
+        const karim = body.providers.find((p) => p.id === 'dr_karim');
+        // The booked 10:00 is gone, as it is for the agent; 11 November is beyond the week.
+        assert.deepEqual(karim.slots['2026-11-10'], [{ start: '2026-11-10T10:30:00+06:00', time_en: '10:30 AM', time_bn: 'সকাল ১০:৩০' }]);
+        assert.equal(karim.slots['2026-11-11'], undefined);
+        assert.equal(karim.hours, null);
+        assert.deepEqual(body.patients, [{ name: 'Fatema Begum', nameBn: 'ফাতেমা বেগম', dob: '1978-11-02', phone: '+8801000000005' }]);
+      });
+
+      it('shows weekly hours when the calendar keeps them', async () => {
+        const { deps } = await setup(prisma);
+        await prisma.provider.create({
+          data: { id: 'dr_karim', name: 'Dr. Karim', hours: { create: [{ weekday: 2, startMinute: 540, endMinute: 780 }] } },
+        });
+        const calendar = new DbCalendarAdapter({ prisma, tz: TZ, clock: () => NOW });
+        const [karim] = (await directory({ ...deps, calendar })).providers;
+        assert.deepEqual(karim.hours, [{ weekday: 2, start_en: '9:00 AM', start_bn: 'সকাল ৯:০০', end_en: '1:00 PM', end_bn: 'দুপুর ১:০০' }]);
+        assert.equal(karim.slots['2026-11-10'].length, 8);
+      });
+
+      it('answers 503 rather than hanging when the calendar is down', async () => {
+        const { deps } = await setup(prisma);
+        const broken = {
+          ...deps,
+          calendar: {
+            listProviders: async () => {
+              throw new Error('down');
+            },
+          },
+        };
+        const app = await buildServer(broken);
+        assert.equal((await app.inject({ method: 'GET', url: '/api/clinic' })).statusCode, 503);
+        await app.close();
+      });
     });
   });
 

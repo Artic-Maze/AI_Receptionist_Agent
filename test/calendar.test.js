@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 
 import { SlotUnavailableError, TransientCalendarError } from '../src/calendar/adapter.js';
 import { CalcomAdapter } from '../src/calendar/calcom.js';
+import { DbCalendarAdapter } from '../src/calendar/db.js';
 import { FakeAdapter } from '../src/calendar/fake.js';
+import { createTestPrisma, migrateTestDatabase, resetDatabase } from '../evals/lib/db.js';
 import { runContract } from '../evals/smoke/contract.js';
 import { createCalcomStub } from './helpers/calcom-stub.js';
 
@@ -44,6 +46,119 @@ describe('calendar contract', () => {
     const passed = await runContract(adapter, { from: FROM, to: TO });
     assert.equal(passed.length, 9);
     assert.ok(stub.seen.some((r) => r.path === '/slots' && r.version === '2024-09-04'));
+  });
+});
+
+describe('DbCalendarAdapter', () => {
+  let prisma;
+  before(async () => {
+    await migrateTestDatabase();
+    prisma = createTestPrisma();
+  });
+  after(() => prisma.$disconnect());
+
+  // Tuesdays 10:00 to 11:30 in Dhaka: the same three slots the other adapters get.
+  const TUESDAY = { weekday: 2, startMinute: 600, endMinute: 690 };
+
+  async function db({ hours = [TUESDAY], clock = () => NOW, ...options } = {}) {
+    await resetDatabase(prisma);
+    await prisma.provider.create({ data: { ...PROVIDER, hours: { create: hours } } });
+    await prisma.provider.create({ data: { id: 'dr_nasrin', name: 'Dr. Nasrin' } });
+    return new DbCalendarAdapter({ prisma, tz: 'Asia/Dhaka', clock, ...options });
+  }
+  const book = (adapter, start = TUE_10, patient = PATIENT) =>
+    adapter.createBooking({ providerId: 'dr_karim', start: new Date(start), patient });
+  const OTHER = { id: 'p2', name: 'Fatema Begum' };
+
+  it('holds the calendar contract', async () => {
+    const passed = await runContract(await db(), { from: FROM, to: TO });
+    assert.equal(passed.length, 9);
+  });
+
+  it('cuts 30-minute slots from weekly hours, in clinic time', async () => {
+    const wednesday = { weekday: 3, startMinute: 14 * 60, endMinute: 15 * 60 };
+    const adapter = await db({ hours: [TUESDAY, wednesday] });
+    const slots = await adapter.getAvailability({ providerId: 'dr_karim', from: FROM, to: TO });
+    assert.deepEqual(slots.map((s) => s.start), [
+      TUE_10,
+      TUE_1030,
+      TUE_11,
+      '2026-11-11T08:00:00.000Z',
+      '2026-11-11T08:30:00.000Z',
+    ]);
+    assert.equal(slots[0].end, TUE_1030);
+    assert.deepEqual(await adapter.getAvailability({ providerId: 'dr_nasrin', from: FROM, to: TO }), []);
+  });
+
+  it('never offers a slot that has passed, or one beyond the booking horizon', async () => {
+    const later = await db({ clock: () => new Date(TUE_1030) });
+    assert.deepEqual((await later.getAvailability({ providerId: 'dr_karim', from: FROM, to: TO })).map((s) => s.start), [TUE_11]);
+    const near = await db({ horizonDays: 5 });
+    assert.deepEqual(await near.getAvailability({ providerId: 'dr_karim', from: FROM, to: TO }), []);
+    await assert.rejects(book(near), SlotUnavailableError);
+  });
+
+  it('refuses a time that is not on the schedule', async () => {
+    await assert.rejects(book(await db(), '2026-11-10T04:15:00.000Z'), SlotUnavailableError);
+  });
+
+  it('lets only one of two racing bookings have the slot', async () => {
+    const adapter = await db();
+    const results = await Promise.allSettled([book(adapter), book(adapter, TUE_10, OTHER)]);
+    assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1);
+    assert.ok(results.find((r) => r.status === 'rejected').reason instanceof SlotUnavailableError);
+  });
+
+  it('enforces one active booking per slot in the database itself', async () => {
+    await db();
+    const row = { patientId: 'p1', providerId: 'dr_karim', start: new Date(TUE_10), end: new Date(TUE_1030) };
+    await prisma.calendarBooking.create({ data: row });
+    await assert.rejects(prisma.calendarBooking.create({ data: { ...row, patientId: 'p2' } }));
+    await prisma.calendarBooking.create({ data: { ...row, patientId: 'p2', status: 'cancelled' } });
+  });
+
+  it('turns a lost race at the database into slot_unavailable', async () => {
+    await db();
+    await prisma.calendarBooking.create({
+      data: { patientId: 'p2', providerId: 'dr_karim', start: new Date(TUE_10), end: new Date(TUE_1030) },
+    });
+    // The availability read misses the rival booking, as it would mid-race; the insert can't.
+    const blind = new Proxy(prisma, {
+      get: (target, key) =>
+        key === 'calendarBooking'
+          ? { ...target.calendarBooking, findMany: async () => [], create: (args) => target.calendarBooking.create(args) }
+          : target[key],
+    });
+    const adapter = new DbCalendarAdapter({ prisma: blind, tz: 'Asia/Dhaka', clock: () => NOW });
+    await assert.rejects(book(adapter), SlotUnavailableError);
+  });
+
+  it('leaves the original booking alone when a reschedule fails', async () => {
+    const adapter = await db();
+    const mine = await book(adapter);
+    await book(adapter, TUE_1030, OTHER);
+    await assert.rejects(adapter.rescheduleBooking(mine.id, new Date(TUE_1030)), SlotUnavailableError);
+    const still = await adapter.getBooking(mine.id);
+    assert.equal(still.status, 'active');
+    assert.equal(still.start, TUE_10);
+    assert.equal(still.rescheduledToId, undefined);
+  });
+
+  it('lists weekly hours for the homepage', async () => {
+    const adapter = await db();
+    assert.deepEqual(await adapter.weeklyHours(), [{ providerId: 'dr_karim', ...TUESDAY }]);
+  });
+
+  it('reports a database failure as transient', async () => {
+    const down = async () => {
+      throw new Error('connection refused');
+    };
+    const adapter = new DbCalendarAdapter({
+      prisma: { provider: { findMany: down }, calendarBooking: { findUnique: down } },
+      tz: 'Asia/Dhaka',
+    });
+    await assert.rejects(adapter.listProviders(), TransientCalendarError);
+    await assert.rejects(adapter.getBooking('x'), TransientCalendarError);
   });
 });
 

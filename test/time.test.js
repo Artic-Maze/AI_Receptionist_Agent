@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  addDays,
+  clockLabels,
   dayBounds,
   displayLabels,
+  labelParts,
   localParts,
   parseLocal,
   toAsciiDigits,
@@ -50,6 +53,23 @@ describe('time helpers', () => {
     const labels = displayLabels(parseLocal('2026-11-10T15:30', DHAKA), DHAKA);
     assert.equal(labels.display_en, 'Tuesday, November 10, 3:30 PM');
     assert.equal(labels.display_bn, 'মঙ্গলবার, ১০ নভেম্বর, বিকাল ৩:৩০');
+  });
+
+  it('steps calendar dates across a month and a year end', () => {
+    assert.equal(addDays('2026-11-30', 1), '2026-12-01');
+    assert.equal(addDays('2026-12-31', 1), '2027-01-01');
+    assert.equal(addDays('2026-03-01', -1), '2026-02-28');
+  });
+
+  it('labels a clock time and a slot’s date and time separately', () => {
+    assert.deepEqual(clockLabels(0), { en: '12:00 AM', bn: 'রাত ১২:০০' });
+    assert.deepEqual(clockLabels(13 * 60 + 30), { en: '1:30 PM', bn: 'দুপুর ১:৩০' });
+    assert.deepEqual(labelParts(parseLocal('2026-11-10T10:00', DHAKA), DHAKA), {
+      date_en: 'Tuesday, November 10',
+      date_bn: 'মঙ্গলবার, ১০ নভেম্বর',
+      time_en: '10:00 AM',
+      time_bn: 'সকাল ১০:০০',
+    });
   });
 
   it('converts numerals both ways', () => {

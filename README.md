@@ -13,6 +13,8 @@ The evaluation suite is the product. Anyone can demo a booking; the harder quest
 | Guards, agent loop, database | Automated tests, plus all 46 scenarios on a scripted model | |
 | Eval suite | Mutation test: removing any guard makes real scenarios fail | |
 | Web widget | Driven in headless Chrome with a scripted model | |
+| Demo calendar (Postgres) | Same contract suite, plus races and failed reschedules, against Postgres | |
+| Registration from chat | Turn tests on a scripted model | Not in the scenario suite yet |
 | **Claude integration** | Request format checked against a local stub | **First run against the real API** |
 | **Scenarios on a real model** | Not yet run | **First live run** |
 | Cal.com adapter | Contract suite against a stub written from the API docs | Contract run against a real sandbox |
@@ -31,7 +33,7 @@ flowchart TD
     H --> M[Model, behind an LLMClient interface]
     M -- tool call --> G[Input validation and identity gate]
     G -- blocked --> M
-    G --> C[CalendarAdapter: Cal.com or fake]
+    G --> C[CalendarAdapter: Cal.com, Postgres or fake]
     C --> V[Booking verify: read the write back]
     V -- mismatch or tool failure --> S
     V --> M
@@ -121,17 +123,33 @@ npm run db:seed
 npm start                 # http://localhost:3000
 ```
 
-With `CALENDAR_ADAPTER=fake` it runs on in-memory demo slots. The seeded patients are fictional, for example Rahim Uddin, born 12 March 1985. To check the real API works end to end on a single scenario:
+With `CALENDAR_ADAPTER=db` it runs on the demo calendar described below. To check the real API works end to end on a single scenario:
 
 ```bash
 npm run evals -- --llm=claude --only=happy-book-en-01 --runs=1
 ```
 
+## The demo clinic
+
+`npm run db:seed` loads three fictional doctors, their weekly hours and four demo patients. Running it again resets the doctors and their hours, and leaves bookings and registered patients alone.
+
+| Doctor | Specialty | Hours (clinic time) |
+| --- | --- | --- |
+| Dr. Karim | General Medicine | Sun–Thu, 9:00 AM – 1:00 PM |
+| Dr. Nasrin | Cardiology | Sun–Thu, 2:00 PM – 5:00 PM |
+| Dr. Farzana | Paediatrics | Sun, Tue, Thu, 4:00 PM – 7:00 PM, and Sat, 10:00 AM – 1:00 PM |
+
+Slots are 30 minutes long, cut from the weekly hours as they're needed, up to 90 days ahead, so the schedule never runs out. Bookings are stored in Postgres and survive a restart. To change the schedule, edit `prisma/seed.js` and seed again.
+
+The homepage lists the doctors with their hours and this week's free times, which update after each chat reply. It also lists the demo patients with the details needed to sign in as them: two people named Rahim Uddin, and a father and son who share a phone. Tapping a patient or a time fills in the chat box.
+
+**New patients** can register in the chat with their full name, date of birth and phone number. On WhatsApp and voice, the phone number comes from the channel. The agent reads the details back, and registers them only after they confirm. Anyone just registered counts as verified, but has no bookings yet. Registration is refused when someone with the same date of birth already has a name that contains, or is contained in, the new one, so a registration can't take over an existing patient or make them ambiguous. Each conversation can register at most three people, and patients who register never appear on the homepage.
+
 ## Channels
 
 | Channel | Endpoint | Identity hint |
 | --- | --- | --- |
-| Web widget | `/` and `/chat` (SSE) | Name and date of birth, asked in chat |
+| Web widget | `/` and `/chat` (SSE), with `/api/clinic` for the homepage | Name and date of birth, asked in chat |
 | WhatsApp Cloud API | `/whatsapp` | Sender's number |
 | Vapi voice | `/vapi/tools/*` and `/vapi/events` | Caller ID |
 
@@ -164,9 +182,9 @@ Tell the assistant to pass on the caller's exact words and speak the result word
 - **Matching is by clause, not by keyword.** A keyword check for "booked" would also block "that slot was just booked by someone else", so guards look at assertions and pair each time with its date and provider. Repeating a patient's time is only allowed in a question, or insisting on a slot would be enough to make it real.
 - **No temperature setting.** The model and API version in use reject sampling parameters. Three runs per scenario and deterministic checks handle nondeterminism instead.
 - **Retries assume the write may have worked.** A timeout doesn't mean a booking failed, so a retry looks for it first rather than booking twice.
-- **The fake calendar has to earn its place.** It runs the same contract suite as the Cal.com adapter, and mirrors Cal.com's behaviour of issuing a new id on reschedule. After a rejection, the Cal.com adapter re-checks availability, because no error for a taken slot is documented.
+- **The fake calendar has to earn its place.** It runs the same contract suite as the Cal.com adapter, and mirrors Cal.com's behaviour of issuing a new id on reschedule. After a rejection, the Cal.com adapter re-checks availability, because no error for a taken slot is documented. The demo calendar in Postgres runs the same suite too.
 - **History is append-only and stored as `json`.** The API checks that replayed messages are unchanged, and `jsonb` would reorder their keys.
-- **No Booking table.** The calendar is the source of truth, and a second copy would create the drift that booking verify exists to catch.
+- **The agent keeps no copy of bookings.** The calendar is the source of truth, and a second copy would create the drift that booking verify exists to catch. The demo calendar's tables don't break this rule: only its adapter reads them, so they are the calendar, not a copy. A unique index on active bookings stops two conversations taking the same slot.
 
 ## Known limits
 
@@ -175,4 +193,5 @@ Tell the assistant to pass on the caller's exact words and speak the result word
 - **A crash can leave a booking unlogged.** Calendar and database can't commit atomically. A failed audit write undoes the booking, but a crash at that exact moment would not, and there is no reconciliation job.
 - **The audit trigger stops the application, not a database owner.** Production should run the app under a role that doesn't own the table.
 - **Name-only lookups read the whole patient table.** That's fine at clinic scale, not beyond it.
+- **Anyone can register.** That's the point of the demo, but it means anyone can add rows to the patient table. The limits are the per-conversation cap and the chat rate limit, and nothing ever verifies a phone number.
 - **Patient data goes to third parties.** Conversations reach the model provider and bookings reach Cal.com. Using real patient data needs a privacy and legal review first. Everything in this repo is fictional.
