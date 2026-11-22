@@ -1,0 +1,21 @@
+# Local development: Postgres 18 for anyone without a local server, with both
+# databases. Start it with `docker compose -f docker-compose.dev.yml up -d`.
+# docker-compose.yml is the deployment.
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: receptionist
+      POSTGRES_PASSWORD: receptionist
+      POSTGRES_DB: receptionist
+    ports:
+      # 5433 on the host, so it can run beside a Postgres already installed on 5432.
+      - '5433:5432'
+    volumes:
+      # Postgres 18 images keep data under /var/lib/postgresql/18/docker, so the
+      # volume mounts one level up from where older versions put it.
+      - pgdata18:/var/lib/postgresql
+      - ./prisma/docker-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+volumes:
+  # A new volume, because Postgres 18 can't open data written by an older major version.
+  pgdata18:

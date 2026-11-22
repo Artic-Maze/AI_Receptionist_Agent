@@ -13,6 +13,14 @@ function json(value, fallback) {
 
 export const config = {
   port: Number(env.PORT ?? 3000),
+  /**
+   * The addresses a proxy in front of the app connects from, comma-separated: IPs,
+   * CIDR ranges, or "loopback", "linklocal" or "uniquelocal". Behind Traefik in Docker
+   * that is "uniquelocal" (the private ranges). The rate limits key on the visitor's
+   * address, which is then read from X-Forwarded-For, right to left, stopping at the
+   * first address not on this list. Unset, the header is ignored.
+   */
+  trustProxy: env.TRUST_PROXY || false,
   clinicName: env.CLINIC_NAME ?? 'Artic Maze Clinic',
   tz: env.CLINIC_TZ ?? 'Asia/Dhaka',
   databaseUrl: env.DATABASE_URL,

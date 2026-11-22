@@ -106,12 +106,12 @@ The report is one static HTML page, written to `evals/report/out/index.html`. A 
 
 ## Run it
 
-Needs Node 22.18 or later, and Postgres.
+Needs Node 22.18 or later, and Postgres. `docker-compose.dev.yml` runs Postgres 18 on port 5433, so it doesn't clash with a Postgres already on 5432, and the URLs in `.env.example` point at it.
 
 ```bash
 npm install
 cp .env.example .env
-docker compose up -d      # or point the two URLs in .env at your own Postgres
+docker compose -f docker-compose.dev.yml up -d   # or point the two URLs in .env at your own Postgres
 npm test
 npm run evals:offline     # the report lands in evals/report/out/index.html
 ```
@@ -129,6 +129,38 @@ With `CALENDAR_ADAPTER=db` it runs on the demo calendar described below. To chec
 ```bash
 npm run evals -- --llm=claude --only=happy-book-en-01 --runs=1
 ```
+
+## Deploy
+
+`docker-compose.yml` runs the app behind an existing [Traefik](https://traefik.io/) proxy, on an existing Postgres. It expects:
+
+- two external Docker networks: `proxy`, which Traefik is on, and `pg`, which Postgres is on
+- a Traefik entrypoint named `websecure` and a certificate resolver named `le`
+
+Change the domain in the `Host(...)` rule to your own. Then create `.env` from `.env.example` and set:
+
+- `DATABASE_URL`, with the Postgres container's name as the host, such as `postgresql://user:password@postgres:5432/receptionist`
+- `ANTHROPIC_API_KEY`, because `ant auth login` isn't available inside the container
+- `CLINIC_NAME` and `CLINIC_TZ`, if the defaults don't suit
+
+Leave `PORT` at 3000, the port the Traefik label points at. `TEST_DATABASE_URL` isn't used.
+
+To deploy, apply any pending migrations, then build and start the app:
+
+```bash
+docker compose run --rm --build migrate
+docker compose up -d --build
+```
+
+Run both on every deploy. Without `--build`, `migrate` would use the migrations from its last build. It creates the database if it doesn't exist, which needs a Postgres user that is allowed to create databases. `migrate` is in the `tools` profile, so `up` never starts it. To follow the logs, run `docker compose logs -f app`.
+
+On the first deploy, and whenever the doctors or their hours in `prisma/seed.js` change, seed the demo clinic as well. Seeding keeps bookings and registered patients.
+
+```bash
+docker compose run --rm migrate node prisma/seed.js
+```
+
+The rate limits key on each visitor's address. Traefik connects from a private Docker address, so the compose file sets `TRUST_PROXY=uniquelocal`, and the app reads the visitor's address from `X-Forwarded-For`. That relies on Traefik's default of discarding the header when a visitor sends it, so leave `forwardedHeaders.insecure` off. Anyone who can open the site can chat, and every message is a paid Claude call, limited to 30 a minute for each visitor.
 
 ## Languages
 

@@ -1,0 +1,9 @@
+.git
+node_modules
+coverage
+evals/report/out
+.env*
+npm-debug.log*
+.DS_Store
+Dockerfile
+docker-compose*.yml

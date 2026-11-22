@@ -17,7 +17,12 @@ import { createPrisma } from './db/client.js';
  * @param {object} [options]  overrides for tests
  */
 export async function buildServer(deps, options = {}) {
-  const app = Fastify({ logger: options.logger ?? false, bodyLimit: 1024 * 1024 });
+  const app = Fastify({
+    logger: options.logger ?? false,
+    bodyLimit: 1024 * 1024,
+    // Addresses, never `true`, so a visitor can't pick their own rate-limit key.
+    trustProxy: options.trustProxy ?? config.trustProxy,
+  });
   await app.register(rateLimit, { global: false });
 
   registerWebChannel(app, deps);
