@@ -190,6 +190,38 @@ describe('channels', () => {
         await app.close();
       });
     });
+
+    describe('rate limit', () => {
+      const PROXY = '10.0.0.2';
+      // An empty body is refused with 400 before the model is involved, but still counts.
+      const send = (app, forwardedFor) =>
+        app.inject({
+          method: 'POST',
+          url: '/chat',
+          payload: {},
+          remoteAddress: PROXY,
+          headers: forwardedFor ? { 'x-forwarded-for': forwardedFor } : {},
+        });
+
+      it('limits each visitor separately behind one proxy', async () => {
+        const { deps } = await setup(prisma);
+        const app = await buildServer(deps, { trustProxy: 'uniquelocal' });
+        for (let i = 0; i < 30; i++) assert.equal((await send(app, '203.0.113.7')).statusCode, 400);
+        assert.equal((await send(app, '203.0.113.7')).statusCode, 429);
+        assert.equal((await send(app, '198.51.100.4')).statusCode, 400);
+        // A visitor can prepend addresses of their own, but the proxy appends the real one last.
+        assert.equal((await send(app, '192.0.2.99, 203.0.113.7')).statusCode, 429);
+        await app.close();
+      });
+
+      it('ignores X-Forwarded-For when no proxy is in front', async () => {
+        const { deps } = await setup(prisma);
+        const app = await buildServer(deps, { trustProxy: false });
+        for (let i = 0; i < 30; i++) assert.equal((await send(app, `192.0.2.${i}`)).statusCode, 400);
+        assert.equal((await send(app, '192.0.2.200')).statusCode, 429);
+        await app.close();
+      });
+    });
   });
 
   describe('whatsapp', () => {

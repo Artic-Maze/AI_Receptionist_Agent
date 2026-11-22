@@ -1,19 +1,43 @@
-# Optional: Postgres for anyone without a local server. Creates both databases.
+# The deployment: the app behind Traefik, on a Postgres that's already running.
+# For local development, see docker-compose.dev.yml.
 services:
-  postgres:
-    image: postgres:18
+  app:
+    build: .
+    container_name: receptionist
+    restart: unless-stopped
+    # Passes `docker stop` on to Node, which otherwise ignores it as process 1.
+    init: true
+    env_file: .env
     environment:
-      POSTGRES_USER: receptionist
-      POSTGRES_PASSWORD: receptionist
-      POSTGRES_DB: receptionist
-    ports:
-      # 5433 on the host, so it can run beside a Postgres already installed on 5432.
-      - '5433:5432'
-    volumes:
-      # Postgres 18 images keep data under /var/lib/postgresql/18/docker, so the
-      # volume mounts one level up from where older versions put it.
-      - pgdata18:/var/lib/postgresql
-      - ./prisma/docker-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-volumes:
-  # A new volume, because Postgres 18 can't open data written by an older major version.
-  pgdata18:
+      # Traefik connects from a private Docker address. Trusting those lets the app
+      # read each visitor's own address from X-Forwarded-For, which the rate limits
+      # key on. Without it, every visitor would share Traefik's address and one limit.
+      TRUST_PROXY: uniquelocal
+    networks:
+      - proxy
+      - pg
+    labels:
+      - traefik.enable=true
+      # The app is on two networks, and Traefik can only reach it through this one.
+      - traefik.docker.network=proxy
+      - traefik.http.routers.receptionist.rule=Host(`receptionist.articmaze.dev`)
+      - traefik.http.routers.receptionist.entrypoints=websecure
+      - traefik.http.routers.receptionist.tls.certresolver=le
+      - traefik.http.services.receptionist.loadbalancer.server.port=3000
+
+  # One-off migrations (Prisma), and seeding. Run manually; never starts with `up`.
+  migrate:
+    build:
+      context: .
+      target: builder
+    env_file: .env
+    command: npx prisma migrate deploy
+    networks:
+      - pg
+    profiles: ["tools"]
+
+networks:
+  proxy:
+    external: true
+  pg:
+    external: true
