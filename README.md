@@ -106,7 +106,7 @@ The report is one static HTML page, written to `evals/report/out/index.html`. A 
 
 ## Run it
 
-Needs Node 22.18 or later, and Postgres.
+Needs Node 22.18 or later, and Postgres. `docker compose up -d` runs Postgres 18 on port 5433, so it doesn't clash with a Postgres already on 5432, and the URLs in `.env.example` point at it.
 
 ```bash
 npm install

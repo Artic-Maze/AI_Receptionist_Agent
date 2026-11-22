@@ -1,15 +1,19 @@
 # Optional: Postgres for anyone without a local server. Creates both databases.
 services:
   postgres:
-    image: postgres:15
+    image: postgres:18
     environment:
       POSTGRES_USER: receptionist
       POSTGRES_PASSWORD: receptionist
       POSTGRES_DB: receptionist
     ports:
-      - '5432:5432'
+      # 5433 on the host, so it can run beside a Postgres already installed on 5432.
+      - '5433:5432'
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # Postgres 18 images keep data under /var/lib/postgresql/18/docker, so the
+      # volume mounts one level up from where older versions put it.
+      - pgdata18:/var/lib/postgresql
       - ./prisma/docker-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 volumes:
-  pgdata:
+  # A new volume, because Postgres 18 can't open data written by an older major version.
+  pgdata18:
