@@ -137,9 +137,18 @@ npm run evals -- --llm=claude --only=happy-book-en-01 --runs=1
 - two external Docker networks: `proxy`, which Traefik is on, and `pg`, which Postgres is on
 - a Traefik entrypoint named `websecure` and a certificate resolver named `le`
 
-Change the domain in the `Host(...)` rule to your own. Then create `.env` from `.env.example` and set:
+Change the domain in the `Host(...)` rule to your own. Then give the app its own login and database on that Postgres, as its superuser (the container's `POSTGRES_USER`, which is `postgres` unless it was set). A hex password needs no escaping in a URL:
 
-- `DATABASE_URL`, with the Postgres container's name as the host, such as `postgresql://user:password@postgres:5432/receptionist`
+```bash
+openssl rand -hex 24
+docker exec -it postgres psql -U postgres -d postgres \
+  -c "CREATE ROLE receptionist LOGIN PASSWORD '<password>';" \
+  -c "CREATE DATABASE receptionist OWNER receptionist;"
+```
+
+The role has to own the database, because since Postgres 15 only a database's owner can create tables in its default schema. Then create `.env` from `.env.example` and set:
+
+- `DATABASE_URL=postgresql://receptionist:<password>@postgres:5432/receptionist`, where `postgres` is the Postgres container's name
 - `ANTHROPIC_API_KEY`, because `ant auth login` isn't available inside the container
 - `CLINIC_NAME` and `CLINIC_TZ`, if the defaults don't suit
 
@@ -152,7 +161,7 @@ docker compose run --rm --build migrate
 docker compose up -d --build
 ```
 
-Run both on every deploy. Without `--build`, `migrate` would use the migrations from its last build. It creates the database if it doesn't exist, which needs a Postgres user that is allowed to create databases. `migrate` is in the `tools` profile, so `up` never starts it. To follow the logs, run `docker compose logs -f app`.
+Run both on every deploy. Without `--build`, `migrate` would use the migrations from its last build. `migrate` is in the `tools` profile, so `up` never starts it. To follow the logs, run `docker compose logs -f app`.
 
 On the first deploy, and whenever the doctors or their hours in `prisma/seed.js` change, seed the demo clinic as well. Seeding keeps bookings and registered patients.
 
