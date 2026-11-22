@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
 import { BookingNotActiveError, BookingNotFoundError } from '../calendar/adapter.js';
-import { noteIdentityFailure } from '../agent/state.js';
-import { dayBounds, displayLabels, toLocalIso } from '../time.js';
-import { normalizePhone, searchPatients } from './identity.js';
+import { noteIdentityFailure, withLock } from '../agent/state.js';
+import { auditCreate } from '../audit/log.js';
+import { addDays, dayBounds, displayLabels, localParts, toLocalIso } from '../time.js';
+import { findRegistrationClash, isPlausiblePhone, normalizePhone, searchPatients } from './identity.js';
 
 const isoDate = z.iso.date();
 const isoDateTime = z.iso.datetime({ offset: true });
@@ -12,6 +13,7 @@ const SlotView = z.object({
   start: isoDateTime,
   end: isoDateTime,
   display_en: z.string(),
+  display_es: z.string(),
   display_bn: z.string(),
 });
 
@@ -24,10 +26,29 @@ const BookingView = z.object({
   end: isoDateTime,
   status: z.enum(['active', 'cancelled']),
   display_en: z.string(),
+  display_es: z.string(),
   display_bn: z.string(),
 });
 
 const ToolError = z.looseObject({ error: z.string(), message: z.string() });
+
+const PatientView = z.object({ id: z.string(), name: z.string(), name_bn: z.string().nullable() });
+
+/** Registrations allowed per conversation: a parent and two children, say. */
+export const MAX_REGISTRATIONS = 3;
+
+// A registered name is repeated in the clinic's own system note each turn, so it is
+// held to what a name looks like: letters, spaces and a little punctuation, and short.
+const PersonName = z
+  .string()
+  .trim()
+  .min(2)
+  .max(80)
+  .regex(/^[\p{L}\p{M}][\p{L}\p{M} .'’-]*$/u, 'Letters, spaces, dots, hyphens and apostrophes only.')
+  .refine((name) => name.split(/\s+/).length <= 6, 'At most six words.');
+
+const isBangla = (text) => /[\u0980-\u09FF]/.test(text);
+
 const WriteOutput = z.union([
   z.looseObject({ booking: BookingView, previous_booking: BookingView.optional() }),
   ToolError,
@@ -83,7 +104,7 @@ export const TOOLS = {
     output: z.union([
       z.object({
         status: z.literal('resolved'),
-        patient: z.object({ id: z.string(), name: z.string(), name_bn: z.string().nullable() }),
+        patient: PatientView,
         upcoming_bookings: z.array(BookingView),
       }),
       z.object({
@@ -160,7 +181,98 @@ export const TOOLS = {
         message:
           status === 'ambiguous'
             ? 'More than one patient matches. Ask for the identifier that is missing.'
-            : 'No patient matches those details. Ask the patient to check them.',
+            : 'No patient matches those details. Ask the patient to check them, or whether they are new to the clinic.',
+      };
+    },
+  },
+
+  register_patient: {
+    description:
+      'Register someone who is new to the clinic, after find_patient has not found them. Needs their full ' +
+      'name, date of birth and phone number; any phone number the channel provides is used automatically. ' +
+      'Call it only after the patient has confirmed the details you read back to them. On status ' +
+      '"registered" they become the verified patient, with no bookings yet. On "already_registered" they ' +
+      'are already a patient: verify them with find_patient instead.',
+    input: z.object({
+      name: PersonName.describe('Full name as the patient gave it, in English or Bangla script.'),
+      name_bn: PersonName.optional().describe('The name in Bangla script, if the patient gave both spellings.'),
+      dob: isoDate.describe('Date of birth as YYYY-MM-DD, whatever format the patient used.'),
+      phone: z.string().min(5).max(30).optional().describe('Phone number the patient stated.'),
+    }),
+    output: z.union([
+      z.object({
+        status: z.literal('registered'),
+        patient: PatientView,
+        upcoming_bookings: z.array(BookingView).max(0),
+      }),
+      z.object({
+        status: z.enum(['already_registered', 'invalid_details', 'needs_more_info', 'limit_reached']),
+        need: z.array(z.string()).optional(),
+        message: z.string(),
+      }),
+    ]),
+    async run(input, ctx) {
+      const { deps, conversation, turn, tz, now } = ctx;
+      const { prisma } = deps;
+      const { state } = conversation;
+
+      if ((state.registrations ?? 0) >= MAX_REGISTRATIONS) {
+        return {
+          status: 'limit_reached',
+          message: 'No more patients can be registered in this conversation. Offer to pass it to staff.',
+        };
+      }
+
+      const phone = input.phone ? normalizePhone(input.phone) : conversation.state.callerPhone;
+      if (!phone) {
+        return { status: 'needs_more_info', need: ['phone number'], message: 'Ask the patient for their phone number.' };
+      }
+      if (!isPlausiblePhone(phone)) {
+        return { status: 'invalid_details', need: ['phone number'], message: 'That phone number is not valid. Ask for it again.' };
+      }
+      const today = localParts(now, tz).dateKey;
+      if (input.dob > today || input.dob < addDays(today, -365 * 120)) {
+        return { status: 'invalid_details', need: ['date of birth'], message: 'That date of birth is not possible. Ask for it again.' };
+      }
+
+      const name = input.name.normalize('NFC');
+      const nameBn = input.name_bn?.normalize('NFC') ?? (isBangla(name) ? name : null);
+
+      // Serialised, so two conversations registering the same person can't both pass the check.
+      const patient = await withLock('register_patient', async () => {
+        const clash = await findRegistrationClash(prisma, { names: [name, nameBn].filter(Boolean), dob: input.dob });
+        if (clash.length) return null;
+        return prisma.$transaction(async (tx) => {
+          const created = await tx.patient.create({ data: { name, nameBn, dob: input.dob, phone } });
+          await auditCreate(tx, {
+            conversationId: conversation.id,
+            action: 'patient.registered',
+            patientId: created.id,
+            after: { channel: conversation.channel },
+          });
+          return created;
+        });
+      });
+
+      if (!patient) {
+        // Says nothing about who matched. find_patient, with its two-identifier rule, decides that.
+        return {
+          status: 'already_registered',
+          message:
+            'Someone with this name and date of birth is already registered. Verify them with find_patient, ' +
+            'and if they say they are a different person, offer to pass the conversation to staff.',
+        };
+      }
+
+      // The person who just created this record is, by definition, its patient.
+      state.registrations = (state.registrations ?? 0) + 1;
+      state.identityFailures = 0;
+      conversation.patientId = patient.id;
+      turn.guardResults.push({ guard: 'identity_gate', ok: true, tool: 'register_patient', patientId: patient.id });
+      return {
+        status: 'registered',
+        patient: { id: patient.id, name: patient.name, name_bn: patient.nameBn },
+        upcoming_bookings: [],
       };
     },
   },

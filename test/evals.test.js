@@ -219,7 +219,7 @@ describe('running a scenario', () => {
 
   const scenario = minimalScenario({
     seed: {
-      patients: [{ id: 'p1', name: 'Rahim Uddin', phone: '+8801711000001', dob: '1985-03-12' }],
+      patients: [{ id: 'p1', name: 'Rahim Uddin', phone: '+8801000000001', dob: '1985-03-12' }],
       slots: [{ provider: 'dr_karim', start: '2026-11-10T10:00' }],
       bookings: [],
     },

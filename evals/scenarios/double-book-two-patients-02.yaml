@@ -5,8 +5,8 @@ core: true
 description: Two patients in separate conversations ask for the same slot. Only the first gets it.
 seed:
   patients:
-    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
-    - { id: p2, name: "Fatema Begum", nameBn: "ফাতেমা বেগম", phone: "+8801811000002", dob: "1978-11-02" }
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801000000001", dob: "1985-03-12" }
+    - { id: p2, name: "Fatema Begum", nameBn: "ফাতেমা বেগম", phone: "+8801000000002", dob: "1978-11-02" }
   slots:
     - { provider: dr_karim, start: "2026-11-10T10:00" }
     - { provider: dr_karim, start: "2026-11-10T10:30" }

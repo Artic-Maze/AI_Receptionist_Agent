@@ -300,7 +300,7 @@ export function renderReport(summary) {
     <tbody>${categories
       .map(
         (c) => `<tr>
-          <td>${esc(c.label)}${c.critical ? '<span class="tag">Blocks the build</span>' : ''}</td>
+          <td>${esc(c.label)}${c.critical ? '<span class="tag">Safety gate</span>' : ''}</td>
           <td>${meter(c.attemptsPassed, c.attempts, { critical: c.critical })}</td>
           <td class="num">${c.passed}/${c.scenarios}</td>
           <td class="num">${c.attemptsPassed}/${c.attempts}</td>
@@ -355,7 +355,7 @@ export function renderReport(summary) {
 `;
 }
 
-/** The short version, posted as a pull request comment and printed after a run. */
+/** The short version, printed after a run. */
 export function renderSummary(summary) {
   const { totals, gate, categories, guards, regressions } = summary;
   const lines = [
@@ -373,7 +373,7 @@ export function renderSummary(summary) {
     '',
     '| Category | Scenarios | Runs |',
     '| --- | --- | --- |',
-    ...categories.map((c) => `| ${c.label}${c.critical ? ' (blocks the build)' : ''} | ${c.passed}/${c.scenarios} | ${c.attemptsPassed}/${c.attempts} |`),
+    ...categories.map((c) => `| ${c.label}${c.critical ? ' (safety gate)' : ''} | ${c.passed}/${c.scenarios} | ${c.attemptsPassed}/${c.attempts} |`),
     '',
     `**Guard catches:** ${guards.filter((g) => g.expected > 0).map((g) => `${GUARD_INFO[g.guard].name.toLowerCase()} ${g.caught}/${g.expected}`).join(' · ') || 'none expected'}`,
   );

@@ -47,15 +47,133 @@
     background: var(--page);
     color: var(--ink);
     font: 16px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans Bengali", sans-serif;
-    display: flex;
-    justify-content: center;
-    align-items: center;
   }
-  .chat {
-    width: 100%;
-    max-width: 560px;
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
+    gap: 24px;
+    max-width: 1200px;
     height: 100%;
-    max-height: 760px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  /* ---- Directory: doctors, schedule, demo patients ---- */
+  .directory {
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    padding: 4px 4px 24px;
+  }
+  .eyebrow {
+    margin: 0 0 4px;
+    font-size: .75rem;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .intro h1 { margin: 0 0 6px; font-size: 1.5rem; font-weight: 600; line-height: 1.25; }
+  .intro p { margin: 0; color: var(--ink-soft); max-width: 60ch; }
+  h2 { margin: 0 0 12px; font-size: 1.0625rem; font-weight: 600; }
+  .hint { margin: -6px 0 12px; font-size: .875rem; color: var(--ink-soft); }
+  .days {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    margin-bottom: 14px;
+  }
+  .days button {
+    flex-shrink: 0;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: .875rem;
+    min-height: 40px;
+    padding: 4px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .days button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .doctors { display: grid; gap: 12px; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .doctor h3 { margin: 0; font-size: 1rem; font-weight: 600; }
+  .specialty { margin: 0; font-size: .875rem; color: var(--ink-soft); }
+  .hours { margin: 8px 0 0; font-size: .875rem; }
+  .hours div + div { margin-top: 2px; }
+  .slots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .slot {
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    font-size: .875rem;
+    font-variant-numeric: tabular-nums;
+    min-height: 36px;
+    padding: 2px 10px;
+    border-radius: 8px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .slot:hover { background: var(--accent-soft); }
+  .none { margin: 12px 0 0; font-size: .875rem; color: var(--ink-soft); }
+  .patients {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+  }
+  .patient {
+    width: 100%;
+    height: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .patient:hover { border-color: var(--accent); }
+  .patient-name { font-weight: 600; }
+  .meta { font-size: .875rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .tag {
+    font-size: .75rem;
+    background: var(--notice);
+    color: var(--notice-ink);
+    padding: 1px 8px;
+    border-radius: 999px;
+  }
+  .new-patient {
+    margin-top: 10px;
+    border: 1px dashed var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    min-height: 44px;
+    padding: 0 16px;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+  .new-patient:hover { background: var(--accent-soft); }
+  .status { margin: 0; color: var(--ink-soft); font-size: .875rem; }
+
+  /* ---- Chat ---- */
+  .chat {
+    min-height: 0;
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: 16px;
@@ -63,7 +181,7 @@
     flex-direction: column;
     overflow: hidden;
   }
-  header {
+  .chat header {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -71,7 +189,7 @@
     border-bottom: 1px solid var(--line);
   }
   .title { flex: 1; min-width: 0; }
-  h1 { margin: 0; font-size: 1rem; font-weight: 600; }
+  .chat h2 { margin: 0; font-size: 1rem; font-weight: 600; }
   .subtitle { margin: 0; font-size: .8125rem; color: var(--ink-soft); }
   .toggle {
     display: inline-flex;
@@ -174,38 +292,68 @@
     flex-shrink: 0;
   }
   button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: minmax(0, 1fr); height: auto; padding: 16px; }
+    .directory { overflow: visible; padding: 0; }
+    .chat { height: min(720px, 85dvh); }
+  }
   @media (max-width: 600px) {
-    body { align-items: stretch; }
-    .chat { max-width: none; max-height: none; border: 0; border-radius: 0; }
+    .layout { padding: 16px 0 0; gap: 16px; }
+    .directory { padding: 0 16px; }
+    .chat { height: 100dvh; border-radius: 0; border-left: 0; border-right: 0; }
   }
 </style>
 </head>
 <body>
-<main class="chat">
-  <header>
-    <div class="title">
-      <h1 id="title"></h1>
-      <p class="subtitle" id="subtitle"></p>
-    </div>
-    <button type="button" class="restart" id="restart"></button>
-    <div class="toggle" role="group" aria-label="Language">
-      <button type="button" data-lang="en" aria-pressed="true">EN</button>
-      <button type="button" data-lang="bn" aria-pressed="false">বাংলা</button>
-    </div>
-  </header>
-  <div class="messages" id="messages" aria-live="polite"></div>
-  <div class="notice" id="notice" hidden></div>
-  <form id="form">
-    <textarea id="input" rows="1" maxlength="2000" autocomplete="off"></textarea>
-    <button class="send" id="send" type="submit"></button>
-  </form>
-</main>
+<div class="layout">
+  <aside class="directory" aria-labelledby="clinic-name">
+    <header class="intro">
+      <p class="eyebrow" id="eyebrow"></p>
+      <h1 id="clinic-name"></h1>
+      <p id="intro"></p>
+    </header>
+    <section aria-labelledby="doctors-title">
+      <h2 id="doctors-title"></h2>
+      <p class="hint" id="doctors-hint"></p>
+      <div class="days" id="days" role="group"></div>
+      <div class="doctors" id="doctors"></div>
+    </section>
+    <section aria-labelledby="patients-title">
+      <h2 id="patients-title"></h2>
+      <p class="hint" id="patients-hint"></p>
+      <ul class="patients" id="patients"></ul>
+      <button type="button" class="new-patient" id="new-patient"></button>
+    </section>
+    <p class="status" id="directory-status" hidden></p>
+  </aside>
+
+  <main class="chat" id="chat">
+    <header>
+      <div class="title">
+        <h2 id="title"></h2>
+        <p class="subtitle" id="subtitle"></p>
+      </div>
+      <button type="button" class="restart" id="restart"></button>
+      <div class="toggle" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="es" lang="es" aria-pressed="false">Español</button>
+      </div>
+    </header>
+    <div class="messages" id="messages" aria-live="polite"></div>
+    <div class="notice" id="notice" hidden></div>
+    <form id="form">
+      <textarea id="input" rows="1" maxlength="2000" autocomplete="off"></textarea>
+      <button class="send" id="send" type="submit"></button>
+    </form>
+  </main>
+</div>
 <script>
   const TEXT = {
     en: {
       title: 'Clinic Receptionist',
       subtitle: 'AI assistant for appointments. For an emergency, call 999.',
-      greeting: 'Hello! I can book, change or cancel an appointment. How can I help?',
+      greeting: 'Hello! I can book, change or cancel an appointment, or register you as a new patient. How can I help?',
       placeholder: 'Type your message',
       send: 'Send',
       restart: 'New chat',
@@ -213,9 +361,10 @@
       unreachable: 'I couldn’t reach the clinic. Please try again.',
       tooMany: 'That’s a lot of messages. Please wait a minute and try again.',
       failed: 'Something went wrong on our side. Please try again, or call the clinic.',
-      starters: ['Book an appointment', 'Change my appointment', 'Cancel my appointment'],
+      starters: ['Book an appointment', 'Change my appointment', 'Cancel my appointment', 'I’m a new patient'],
       tools: {
         find_patient: 'Checking your details…',
+        register_patient: 'Registering you…',
         check_availability: 'Checking availability…',
         create_booking: 'Booking your appointment…',
         reschedule_booking: 'Moving your appointment…',
@@ -224,29 +373,77 @@
         handoff_to_human: 'Connecting you with our staff…',
         default: 'One moment…',
       },
+      eyebrow: 'Demo clinic',
+      intro: 'The doctors, schedule and patients here are fictional. Try the receptionist as one of the patients below, or register as a new patient in the chat.',
+      doctorsTitle: 'Doctors and free times',
+      doctorsHint: 'Pick a day, then tap a time to ask for it in the chat.',
+      today: 'Today',
+      noSlots: 'No free times on this day.',
+      patientsTitle: 'Demo patients',
+      patientsHint: 'Tap a patient to introduce yourself as them in the chat.',
+      born: 'Born',
+      sharedPhone: 'Shares a phone with family',
+      sameName: 'Same name as another patient',
+      newPatient: 'Register as a new patient',
+      loading: 'Loading the schedule…',
+      loadFailed: 'Couldn’t load the schedule. Try reloading the page.',
+      empty: 'No doctors are set up yet.',
+      weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+      months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+      specialties: {},
+      askSlot: (doctor, day, time) => `I’d like to book with ${doctor} on ${day} at ${time}.`,
+      introduce: (name, dob) => `Hi, I’m ${name}, born ${dob}.`,
+      register: 'Hi, I’m a new patient and I’d like to register.',
+      formatDob: (d, month, y) => `${d} ${month} ${y}`,
     },
-    bn: {
-      title: 'ক্লিনিক রিসেপশনিস্ট',
-      subtitle: 'অ্যাপয়েন্টমেন্টের জন্য এআই সহকারী। জরুরি প্রয়োজনে ৯৯৯-এ কল করুন।',
-      greeting: 'স্বাগতম! আমি অ্যাপয়েন্টমেন্ট বুক, পরিবর্তন বা বাতিল করতে পারি। কীভাবে সাহায্য করতে পারি?',
-      placeholder: 'আপনার বার্তা লিখুন',
-      send: 'পাঠান',
-      restart: 'নতুন চ্যাট',
-      handedOff: 'আমাদের একজন কর্মী কথোপকথনটি দেখছেন এবং এখানেই উত্তর দেবেন।',
-      unreachable: 'ক্লিনিকের সঙ্গে সংযোগ করা যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।',
-      tooMany: 'অনেক বেশি বার্তা পাঠানো হয়েছে। অনুগ্রহ করে এক মিনিট পরে আবার চেষ্টা করুন।',
-      failed: 'আমাদের দিকে একটি সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন, অথবা ক্লিনিকে ফোন করুন।',
-      starters: ['অ্যাপয়েন্টমেন্ট বুক করতে চাই', 'অ্যাপয়েন্টমেন্ট পরিবর্তন করতে চাই', 'অ্যাপয়েন্টমেন্ট বাতিল করতে চাই'],
+    es: {
+      title: 'Recepción de la clínica',
+      subtitle: 'Asistente de IA para citas. En caso de emergencia, llame al 999.',
+      greeting: '¡Hola! Puedo reservar, cambiar o cancelar una cita, o registrarle como paciente. ¿En qué puedo ayudarle?',
+      placeholder: 'Escriba su mensaje',
+      send: 'Enviar',
+      restart: 'Nuevo chat',
+      handedOff: 'Un miembro de nuestro personal está atendiendo esta conversación y le responderá aquí.',
+      unreachable: 'No he podido conectar con la clínica. Inténtelo de nuevo.',
+      tooMany: 'Ha enviado muchos mensajes. Espere un minuto y vuelva a intentarlo.',
+      failed: 'Algo ha fallado por nuestra parte. Inténtelo de nuevo o llame a la clínica.',
+      starters: ['Reservar una cita', 'Cambiar mi cita', 'Cancelar mi cita', 'Registrarme como paciente'],
       tools: {
-        find_patient: 'আপনার তথ্য দেখা হচ্ছে…',
-        check_availability: 'খালি সময় দেখা হচ্ছে…',
-        create_booking: 'অ্যাপয়েন্টমেন্ট বুক করা হচ্ছে…',
-        reschedule_booking: 'অ্যাপয়েন্টমেন্ট পরিবর্তন করা হচ্ছে…',
-        cancel_booking: 'অ্যাপয়েন্টমেন্ট বাতিল করা হচ্ছে…',
-        get_booking: 'বুকিং দেখা হচ্ছে…',
-        handoff_to_human: 'আমাদের কর্মীর সঙ্গে যুক্ত করা হচ্ছে…',
-        default: 'একটু অপেক্ষা করুন…',
+        find_patient: 'Comprobando sus datos…',
+        register_patient: 'Registrándole…',
+        check_availability: 'Consultando la disponibilidad…',
+        create_booking: 'Reservando su cita…',
+        reschedule_booking: 'Cambiando su cita…',
+        cancel_booking: 'Cancelando su cita…',
+        get_booking: 'Consultando su cita…',
+        handoff_to_human: 'Poniéndole en contacto con nuestro personal…',
+        default: 'Un momento…',
       },
+      eyebrow: 'Clínica de demostración',
+      intro: 'Los médicos, horarios y pacientes de esta página son ficticios. Pruebe la recepción como uno de los pacientes de abajo, o regístrese como paciente en el chat.',
+      doctorsTitle: 'Médicos y horas libres',
+      doctorsHint: 'Elija un día y toque una hora para pedirla en el chat.',
+      today: 'Hoy',
+      noSlots: 'No hay horas libres este día.',
+      patientsTitle: 'Pacientes de demostración',
+      patientsHint: 'Toque un paciente para presentarse como esa persona en el chat.',
+      born: 'Nac.',
+      sharedPhone: 'Comparte teléfono con su familia',
+      sameName: 'Mismo nombre que otro paciente',
+      newPatient: 'Registrarme como paciente',
+      loading: 'Cargando el horario…',
+      loadFailed: 'No se pudo cargar el horario. Recargue la página.',
+      empty: 'Todavía no hay médicos configurados.',
+      weekdays: ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'],
+      months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+      // The clinic stores specialties in English.
+      specialties: { 'General Medicine': 'Medicina general', Cardiology: 'Cardiología', Paediatrics: 'Pediatría' },
+      // A list, not a sentence, so it needs no "el" or "la" before the doctor's title.
+      // "a. m." already ends in a full stop.
+      askSlot: (doctor, day, time) => `Quisiera reservar una cita: ${doctor}, ${day}, ${time}`.replace(/\.?$/, '.'),
+      introduce: (name, dob) => `Hola, soy ${name}, nací el ${dob}.`,
+      register: 'Hola, es mi primera vez en la clínica y quisiera registrarme.',
+      formatDob: (d, month, y) => `${d} de ${month} de ${y}`,
     },
   };
 
@@ -262,6 +459,182 @@
   let busy = false;
   let handedOff = false;
   let progress = null;
+
+  // ---- Directory ------------------------------------------------------------
+
+  let directory = null;
+  let directoryState = 'loading';
+  let selectedDay = null;
+
+  function el(tag, className, text) {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (text !== undefined) element.textContent = text;
+    return element;
+  }
+
+  const weekdayOf = (date) => {
+    const [y, m, d] = date.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  };
+
+  /** "Sun–Thu", or "Sun, Tue, Thu": runs of three or more days collapse into a range. */
+  function dayList(days, t) {
+    const parts = [];
+    for (let i = 0; i < days.length; ) {
+      let j = i;
+      while (j + 1 < days.length && days[j + 1] === days[j] + 1) j += 1;
+      if (j - i >= 2) parts.push(`${t.weekdays[days[i]]}–${t.weekdays[days[j]]}`);
+      else for (let k = i; k <= j; k += 1) parts.push(t.weekdays[days[k]]);
+      i = j + 1;
+    }
+    return parts.join(', ');
+  }
+
+  /** Weekdays that share the same hours, one line each: "Sun–Thu · 9:00 AM – 1:00 PM". */
+  function hoursLines(hours, t) {
+    const byDay = new Map();
+    for (const block of hours) {
+      const text = `${block[`start_${language}`]} – ${block[`end_${language}`]}`;
+      byDay.set(block.weekday, [...(byDay.get(block.weekday) ?? []), text]);
+    }
+    const groups = new Map();
+    for (let weekday = 0; weekday < 7; weekday += 1) {
+      if (!byDay.has(weekday)) continue;
+      const key = byDay.get(weekday).join(', ');
+      groups.set(key, [...(groups.get(key) ?? []), weekday]);
+    }
+    return [...groups].map(([blocks, days]) => `${dayList(days, t)} · ${blocks}`);
+  }
+
+  function formatDob(dob, t) {
+    const [y, m, d] = dob.split('-').map(Number);
+    return t.formatDob(d, t.months[m - 1], y);
+  }
+
+  function prefill(text) {
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+    const box = $('chat').getBoundingClientRect();
+    if (box.top < 0 || box.bottom > window.innerHeight) $('chat').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    input.focus({ preventScroll: true });
+  }
+
+  function renderDays(t) {
+    const row = $('days');
+    row.replaceChildren();
+    row.setAttribute('aria-label', t.doctorsTitle);
+    directory.days.forEach((day, index) => {
+      const button = el('button');
+      button.type = 'button';
+      const [, , d] = day.date.split('-');
+      button.textContent = index === 0 ? t.today : `${t.weekdays[weekdayOf(day.date)]} ${Number(d)}`;
+      button.title = day[`label_${language}`];
+      button.setAttribute('aria-pressed', String(day.date === selectedDay));
+      button.addEventListener('click', () => {
+        selectedDay = day.date;
+        renderDirectory();
+      });
+      row.append(button);
+    });
+  }
+
+  function renderDoctors(t) {
+    const list = $('doctors');
+    list.replaceChildren();
+    const day = directory.days.find((d) => d.date === selectedDay);
+    for (const doctor of directory.providers) {
+      const card = el('article', 'card doctor');
+      card.append(el('h3', null, doctor.name));
+      if (doctor.specialty) card.append(el('p', 'specialty', t.specialties[doctor.specialty] ?? doctor.specialty));
+      if (doctor.hours?.length) {
+        const hours = el('div', 'hours');
+        for (const line of hoursLines(doctor.hours, t)) hours.append(el('div', null, line));
+        card.append(hours);
+      }
+      const slots = doctor.slots[selectedDay] ?? [];
+      if (slots.length) {
+        const row = el('div', 'slots');
+        for (const slot of slots) {
+          const button = el('button', 'slot', slot[`time_${language}`]);
+          button.type = 'button';
+          button.addEventListener('click', () =>
+            prefill(t.askSlot(doctor.name, day[`label_${language}`], slot[`time_${language}`])),
+          );
+          row.append(button);
+        }
+        card.append(row);
+      } else {
+        card.append(el('p', 'none', t.noSlots));
+      }
+      list.append(card);
+    }
+  }
+
+  function renderPatients(t) {
+    const list = $('patients');
+    list.replaceChildren();
+    for (const patient of directory.patients) {
+      const item = el('li');
+      const button = el('button', 'card patient');
+      button.type = 'button';
+      button.append(el('span', 'patient-name', patient.name));
+      const dob = patient.dob ? formatDob(patient.dob, t) : null;
+      button.append(el('span', 'meta', [dob && `${t.born} ${dob}`, patient.phone].filter(Boolean).join(' · ')));
+      const tags = el('span', 'tags');
+      if (directory.patients.filter((p) => p.phone === patient.phone).length > 1) tags.append(el('span', 'tag', t.sharedPhone));
+      if (directory.patients.filter((p) => p.name === patient.name).length > 1) tags.append(el('span', 'tag', t.sameName));
+      if (tags.childElementCount) button.append(tags);
+      button.addEventListener('click', () => prefill(t.introduce(patient.name, dob ?? '')));
+      item.append(button);
+      list.append(item);
+    }
+  }
+
+  function renderDirectory() {
+    const t = TEXT[language];
+    $('eyebrow').textContent = t.eyebrow;
+    $('clinic-name').textContent = directory?.clinic.name ?? t.title;
+    $('intro').textContent = t.intro;
+    $('doctors-title').textContent = t.doctorsTitle;
+    $('doctors-hint').textContent = t.doctorsHint;
+    $('patients-title').textContent = t.patientsTitle;
+    $('patients-hint').textContent = t.patientsHint;
+    $('new-patient').textContent = t.newPatient;
+
+    const status = $('directory-status');
+    const message = { loading: t.loading, failed: t.loadFailed }[directoryState]
+      ?? (directory && directory.providers.length === 0 ? t.empty : null);
+    status.hidden = !message;
+    status.textContent = message ?? '';
+    if (!directory) return;
+
+    if (!directory.days.some((d) => d.date === selectedDay)) {
+      // The first day anyone has a free slot, so the schedule never opens empty.
+      const open = directory.days.find((d) => directory.providers.some((p) => p.slots[d.date]?.length));
+      selectedDay = (open ?? directory.days[0]).date;
+    }
+    renderDays(t);
+    renderDoctors(t);
+    renderPatients(t);
+  }
+
+  async function loadDirectory() {
+    try {
+      const response = await fetch('/api/clinic', { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(String(response.status));
+      directory = await response.json();
+      directoryState = 'ready';
+    } catch {
+      // Keep showing the last schedule if there is one; it is refreshed after each reply.
+      if (!directory) directoryState = 'failed';
+    }
+    renderDirectory();
+  }
+
+  $('new-patient').addEventListener('click', () => prefill(TEXT[language].register));
+
+  // ---- Chat -----------------------------------------------------------------
 
   function add(className, text) {
     const element = document.createElement('div');
@@ -321,7 +694,7 @@
     renderChrome();
     add('bubble agent', TEXT[language].greeting);
     renderStarters();
-    input.focus();
+    input.focus({ preventScroll: true });
   }
 
   function handleEvent(event, data) {
@@ -381,7 +754,9 @@
       clearProgress();
       busy = false;
       send.disabled = false;
-      input.focus();
+      input.focus({ preventScroll: true });
+      // A booking or cancellation changes the free times shown beside the chat.
+      loadDirectory();
     }
   }
 
@@ -407,6 +782,7 @@
     button.addEventListener('click', () => {
       language = button.dataset.lang;
       renderChrome();
+      renderDirectory();
       if (!conversationId) {
         messages.replaceChildren();
         add('bubble agent', TEXT[language].greeting);
@@ -418,6 +794,8 @@
   $('restart').addEventListener('click', restart);
 
   restart();
+  renderDirectory();
+  loadDirectory();
 </script>
 </body>
 </html>

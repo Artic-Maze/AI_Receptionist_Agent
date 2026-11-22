@@ -18,11 +18,12 @@ function assert(condition, message) {
 
 /**
  * @param {import('../../src/calendar/adapter.js').CalendarAdapter} adapter
- * @param {{ from: Date, to: Date, patient?: { id: string, name: string, phone: string },
+ * @param {{ from: Date, to: Date, patient?: { id: string, name: string, phone?: string },
  *           log?: (name: string) => void }} options
  */
 export async function runContract(adapter, { from, to, patient, log = () => {} }) {
-  const who = patient ?? { id: 'contract_patient', name: 'Contract Test', phone: '+8801700000000' };
+  // No phone number: this can run against a real calendar, whose event type might text it.
+  const who = patient ?? { id: 'contract_patient', name: 'Contract Test' };
   const passed = [];
   const check = (name) => {
     passed.push(name);

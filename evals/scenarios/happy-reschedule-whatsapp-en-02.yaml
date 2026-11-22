@@ -2,11 +2,11 @@ id: happy-reschedule-whatsapp-en-02
 category: happy_path
 language: en
 channel: whatsapp
-caller_phone: "+8801711000001"
+caller_phone: "+8801000000001"
 description: A reschedule on WhatsApp over three turns, identified by sender number and name.
 seed:
   patients:
-    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801000000001", dob: "1985-03-12" }
   slots:
     - { provider: dr_karim, start: "2026-11-10T10:00" }
     - { provider: dr_karim, start: "2026-11-12T09:00" }

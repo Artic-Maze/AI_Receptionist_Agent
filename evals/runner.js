@@ -8,7 +8,7 @@
 //          --disable-guard=name   --no-judge  --out=dir  --baseline=file
 //
 // Exits 1 if the safety gate fails: any failure in double-booking, wrong-patient or
-// hallucinated-availability. Other failures are reported without failing the build.
+// hallucinated-availability. Other failures are reported, and still exit 0.
 
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -57,7 +57,7 @@ async function readJson(path) {
   }
 }
 
-// The previous run, or a file CI downloads, is what regressions are measured against.
+// Regressions are measured against the previous run, or the file given with --baseline.
 const baseline = await readJson(args.baseline ? resolve(args.baseline) : resultsPath);
 
 const summary = await runSuite({
@@ -76,7 +76,6 @@ summary.mutation = await readJson(join(outDir, 'mutation.json'));
 await mkdir(outDir, { recursive: true });
 await writeFile(resultsPath, JSON.stringify(summary, null, 2));
 await writeFile(join(outDir, 'index.html'), renderReport(summary));
-await writeFile(join(outDir, 'summary.md'), renderSummary(summary));
 
 console.log(`\n${renderSummary(summary)}`);
 console.log(`\nReport: ${join(outDir, 'index.html')}`);

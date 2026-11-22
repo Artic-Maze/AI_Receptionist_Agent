@@ -16,7 +16,7 @@
  * @typedef {object} CalendarAdapter
  * @property {() => Promise<Provider[]>} listProviders
  * @property {(q: { providerId: string, from: Date, to: Date }) => Promise<Slot[]>} getAvailability
- * @property {(b: { providerId: string, start: Date, patient: { id: string, name: string, phone: string } }) => Promise<Booking>} createBooking
+ * @property {(b: { providerId: string, start: Date, patient: { id: string, name: string, phone?: string } }) => Promise<Booking>} createBooking
  * @property {(id: string, newStart: Date, opts?: { reason?: string }) => Promise<Booking>} rescheduleBooking
  * @property {(id: string, opts?: { reason?: string }) => Promise<Booking>} cancelBooking
  * @property {(id: string) => Promise<Booking | null>} getBooking

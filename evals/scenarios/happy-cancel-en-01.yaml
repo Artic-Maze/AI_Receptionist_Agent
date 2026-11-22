@@ -5,7 +5,7 @@ core: true
 description: Cancels an existing appointment and confirms it after the read-back.
 seed:
   patients:
-    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801000000001", dob: "1985-03-12" }
   slots:
     - { provider: dr_karim, start: "2026-11-10T10:00" }
   bookings:

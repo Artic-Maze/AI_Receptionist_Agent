@@ -1,7 +1,7 @@
 try {
   process.loadEnvFile();
 } catch {
-  // No .env file: rely on the real environment, as CI does.
+  // No .env file: rely on the real environment.
 }
 
 const env = process.env;
@@ -23,7 +23,8 @@ export const config = {
   },
   judgeModel: env.JUDGE_MODEL ?? env.LLM_MODEL ?? 'claude-opus-5-5',
   calendar: {
-    adapter: env.CALENDAR_ADAPTER ?? 'fake',
+    /** db: the demo calendar in Postgres. calcom: the real Cal.com API. */
+    adapter: env.CALENDAR_ADAPTER ?? 'db',
     calcom: {
       apiKey: env.CALCOM_API_KEY,
       baseUrl: env.CALCOM_BASE_URL ?? 'https://api.cal.com/v2',

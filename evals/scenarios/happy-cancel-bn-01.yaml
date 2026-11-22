@@ -4,7 +4,7 @@ language: bn
 description: Cancels an appointment in Bangla.
 seed:
   patients:
-    - { id: p2, name: "Fatema Begum", nameBn: "ফাতেমা বেগম", phone: "+8801811000002", dob: "1978-11-02" }
+    - { id: p2, name: "Fatema Begum", nameBn: "ফাতেমা বেগম", phone: "+8801000000002", dob: "1978-11-02" }
   slots:
     - { provider: dr_nasrin, start: "2026-11-11T14:00" }
   bookings:

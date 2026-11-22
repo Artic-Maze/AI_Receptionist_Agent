@@ -13,7 +13,7 @@ export const PROVIDERS = [
   { id: 'dr_nasrin', name: 'Dr. Nasrin', nameBn: 'ডা. নাসরিন', specialty: 'Cardiology' },
 ];
 
-export const RAHIM = { id: 'p1', name: 'Rahim Uddin', nameBn: 'রহিম উদ্দিন', phone: '+8801711000001', dob: '1985-03-12' };
+export const RAHIM = { id: 'p1', name: 'Rahim Uddin', nameBn: 'রহিম উদ্দিন', phone: '+8801000000001', dob: '1985-03-12' };
 
 /** A clean database, a seeded calendar and a scripted model, ready for a turn. */
 export async function setup(prisma, { patients = [RAHIM], slots, bookings = [], channel = 'web', callerPhone } = {}) {

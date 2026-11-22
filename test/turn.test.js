@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
+import { detectLanguage } from '../src/agent/state.js';
 import { MAX_TOOL_CALLS_PER_TURN, runTurn } from '../src/agent/turn.js';
+import { MAX_REGISTRATIONS } from '../src/tools/index.js';
 import { createTestPrisma, migrateTestDatabase } from '../evals/lib/db.js';
 import { at, RAHIM, setup } from './helpers/harness.js';
 
@@ -41,15 +43,23 @@ describe('agent turn', () => {
     await runTurn(deps, { conversationId, text: 'I need an appointment' });
     llm.load([IDENTIFY, { say: 'Thank you, Rahim. Which doctor?' }]);
     await runTurn(deps, { conversationId, text: 'Rahim Uddin, 12 March 1985' });
+    // A later turn, so the tool call above has to come back from the database.
+    llm.load([{ say: 'Which day would you like?' }]);
+    await runTurn(deps, { conversationId, text: 'Dr. Karim' });
 
-    const [first, second, third] = llm.requests;
-    // Each request must start with exactly the messages of the one before.
-    assert.deepEqual(second.slice(0, first.length), first);
-    assert.deepEqual(third.slice(0, second.length), second);
+    const [first, second, third, fourth] = llm.requests;
+    // Each request must start with exactly the messages of the one before, byte for
+    // byte. This compares strings on purpose: deepEqual ignores key order, and key
+    // order surviving the database is the whole reason messages are stored as json.
+    assert.equal(JSON.stringify(second.slice(0, first.length)), JSON.stringify(first));
+    assert.equal(JSON.stringify(third.slice(0, second.length)), JSON.stringify(second));
+    assert.equal(JSON.stringify(fourth.slice(0, third.length)), JSON.stringify(third));
+    const toolUse = fourth.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).find((b) => b.type === 'tool_use');
+    assert.deepEqual(Object.keys(toolUse.input), ['name', 'dob']);
     assert.equal(first[0].role, 'user');
     assert.equal(first[1].role, 'system');
     // A tool round stays paired, and a system note always follows a user message.
-    for (const request of [first, second, third]) {
+    for (const request of [first, second, third, fourth]) {
       request.forEach((message, i) => {
         if (message.role === 'system') assert.equal(request[i - 1].role, 'user');
         if (Array.isArray(message.content) && message.content[0]?.type === 'tool_use') {
@@ -178,6 +188,46 @@ describe('agent turn', () => {
     assert.match(llm.requests[1].at(-1).content, /Reply in: Bangla/);
   });
 
+  it('follows a patient into Spanish, and back to English', async () => {
+    const { deps, llm, conversationId } = await setup(prisma);
+    llm.load([{ say: 'Hola. ¿En qué puedo ayudarle?' }, { say: 'De acuerdo.' }, { say: 'Sure.' }]);
+    const language = async () => (await prisma.conversation.findUnique({ where: { id: conversationId } })).language;
+    await runTurn(deps, { conversationId, text: 'Hola, quiero una cita' });
+    assert.equal(await language(), 'es');
+    assert.match(llm.requests[0].at(-1).content, /Reply in: Spanish/);
+    // A name alone says nothing about language, so Spanish stays.
+    await runTurn(deps, { conversationId, text: 'Rahim Uddin' });
+    assert.equal(await language(), 'es');
+    await runTurn(deps, { conversationId, text: 'Can we speak English instead?' });
+    assert.equal(await language(), 'en');
+  });
+
+  it('books in Spanish, and confirms only what was verified', async () => {
+    const { deps, llm, calendar, conversationId } = await setup(prisma);
+    const confirmed = 'Su cita con el Dr. Karim está confirmada para el martes, 10 de noviembre, a las 10:00 a. m.';
+    llm.load([IDENTIFY, CHECK, BOOK, { say: confirmed }]);
+    const result = await runTurn(deps, {
+      conversationId,
+      text: 'Soy Rahim Uddin, nací el 12 de marzo de 1985. Quiero una cita con el Dr. Karim el martes a las 10.',
+    });
+    assert.equal(result.reply, confirmed);
+    assert.equal(result.handedOff, false);
+    assert.equal((await calendar.listBookingsForPatient('p1')).length, 1);
+  });
+
+  it('holds Spanish replies to the same guards, and hands off in Spanish', async () => {
+    const { deps, llm, calendar, conversationId } = await setup(prisma);
+    llm.load([
+      { say: 'Su cita con el Dr. Karim está confirmada para el martes a las 10:00 a. m.' },
+      { say: 'Listo, su cita ha quedado reservada.' },
+    ]);
+    const result = await runTurn(deps, { conversationId, text: 'Resérveme con el Dr. Karim el martes a las 10, por favor' });
+    assert.equal(result.handedOff, true);
+    assert.equal(result.handoffReason, 'guard_failure');
+    assert.match(result.reply, /Le pongo en contacto con un miembro de nuestro personal/);
+    assert.equal(calendar.snapshot().length, 0);
+  });
+
   it('puts the clinic time and verified patient in the turn note', async () => {
     const { deps, llm, conversationId } = await setup(prisma);
     llm.load([IDENTIFY, { say: 'Hi Rahim.' }, { say: 'Which doctor?' }]);
@@ -258,7 +308,7 @@ describe('tool execution', () => {
   });
 
   it('finds a relative on another number by name and date of birth', async () => {
-    const son = { id: 'p2', name: 'Arif Uddin', phone: '+8801711999999', dob: '2015-06-01' };
+    const son = { id: 'p2', name: 'Arif Uddin', phone: '+8801000000009', dob: '2015-06-01' };
     const { deps, llm, conversationId } = await setup(prisma, { patients: [RAHIM, son], channel: 'whatsapp', callerPhone: RAHIM.phone });
     llm.load([{ call: 'find_patient', input: { name: 'Arif Uddin', dob: '2015-06-01' } }, { say: 'Thanks.' }]);
     await runTurn(deps, { conversationId, text: 'It is for my son Arif Uddin, born 1 June 2015' });
@@ -287,9 +337,9 @@ describe('tool execution', () => {
 
   it('handles Bangla numerals in a phone number', async () => {
     const { normalizePhone } = await import('../src/tools/identity.js');
-    assert.equal(normalizePhone('০১৭১১-০০০০০১'), RAHIM.phone);
-    assert.equal(normalizePhone('8801711000001'), RAHIM.phone);
-    assert.equal(normalizePhone('+8801711000001'), RAHIM.phone);
+    assert.equal(normalizePhone('০১০০০-০০০০০১'), RAHIM.phone);
+    assert.equal(normalizePhone('8801000000001'), RAHIM.phone);
+    assert.equal(normalizePhone('+8801000000001'), RAHIM.phone);
   });
 
   it('finds a patient by their Bangla name', async () => {
@@ -381,7 +431,7 @@ describe('tool execution', () => {
   });
 
   it('never lets one patient read another’s booking', async () => {
-    const other = { ...RAHIM, id: 'p2', name: 'Fatema Begum', dob: '1990-01-01', phone: '+8801711000002' };
+    const other = { ...RAHIM, id: 'p2', name: 'Fatema Begum', dob: '1990-01-01', phone: '+8801000000004' };
     const bookings = [{ id: 'bk_theirs', patientId: 'p2', providerId: 'dr_karim', start: at('2026-11-10T10:00') }];
     const { deps, llm, conversationId } = await setup(prisma, { patients: [RAHIM, other], bookings });
     llm.load([IDENTIFY, { call: 'get_booking', input: { booking_id: 'bk_theirs' } }, { say: 'I can’t see that booking.' }]);
@@ -393,6 +443,138 @@ describe('tool execution', () => {
   });
 
   const fired = (result, guard) => result.guardResults.filter((g) => g.guard === guard && !g.ok);
+});
+
+describe('language detection', () => {
+  it('tells Spanish from English by its words, and Bangla by its script', () => {
+    assert.equal(detectLanguage('Hola, quiero una cita con el Dr. Karim', 'en'), 'es');
+    assert.equal(detectLanguage('Sí', 'en'), 'es');
+    assert.equal(detectLanguage('¿Y el martes?', 'en'), 'es');
+    assert.equal(detectLanguage('Book me with Dr. Karim on Tuesday at 10', 'es'), 'en');
+    assert.equal(detectLanguage('Hi, I’m José García, born 3 March 1990', 'es'), 'en');
+    assert.equal(detectLanguage('আমি রহিম উদ্দিন', 'es'), 'bn');
+  });
+
+  it('keeps the conversation’s language when a message gives no evidence', () => {
+    assert.equal(detectLanguage('Rahim Uddin', 'es'), 'es');
+    assert.equal(detectLanguage('Rahim Uddin', 'en'), 'en');
+    assert.equal(detectLanguage('10:30', 'es'), 'es');
+    assert.equal(detectLanguage('Ok, gracias', 'en'), 'es');
+    // Latin script with no evidence is English, as it was before Spanish existed.
+    assert.equal(detectLanguage('OK', 'bn'), 'en');
+  });
+});
+
+describe('registration', () => {
+  let prisma;
+  before(async () => {
+    await migrateTestDatabase();
+    prisma = createTestPrisma();
+  });
+  after(() => prisma.$disconnect());
+
+  const NADIA = { name: 'Nadia Islam', dob: '1992-07-03', phone: '01712345678' };
+  const register = (input) => ({ call: 'register_patient', input });
+  const lastOutput = async (tool) =>
+    (await prisma.toolCall.findFirst({ where: { tool }, orderBy: { id: 'desc' } })).output;
+  const conversationOf = (id) => prisma.conversation.findUnique({ where: { id } });
+
+  it('registers a new patient, who can then book straight away', async () => {
+    const { deps, llm, calendar, conversationId } = await setup(prisma);
+    llm.load([
+      { call: 'find_patient', input: { name: NADIA.name, dob: NADIA.dob } },
+      { say: 'I couldn’t find you. Are you new to the clinic?' },
+    ]);
+    await runTurn(deps, { conversationId, text: 'Nadia Islam, born 3 July 1992' });
+    llm.load([register(NADIA), { say: 'Thank you, Nadia, you are registered now. Which doctor would you like to see?' }]);
+    const registered = await runTurn(deps, { conversationId, text: 'Yes, I’m new. My number is 01712345678' });
+
+    assert.equal(registered.handedOff, false);
+    const patient = await prisma.patient.findFirst({ where: { name: NADIA.name } });
+    assert.equal(patient.phone, '+8801712345678');
+    assert.equal(patient.dob, NADIA.dob);
+    assert.equal(patient.demo, false);
+    assert.equal((await conversationOf(conversationId)).patientId, patient.id);
+    assert.ok(await prisma.auditLog.findFirst({ where: { action: 'patient.registered', patientId: patient.id } }));
+
+    const book = { call: 'create_booking', input: { patient_id: patient.id, provider_id: 'dr_karim', start: '2026-11-10T10:00:00+06:00' } };
+    llm.load([CHECK, book, { say: CONFIRMED }]);
+    const booked = await runTurn(deps, { conversationId, text: 'Dr. Karim on Tuesday at 10, please' });
+    assert.equal(booked.reply, CONFIRMED);
+    assert.equal((await calendar.listBookingsForPatient(patient.id)).length, 1);
+  });
+
+  it('will not register anyone over an existing patient', async () => {
+    const { deps, llm, calendar, conversationId } = await setup(prisma);
+    llm.load([register({ name: 'Rahim Uddin', dob: '1985-03-12', phone: '01799999999' }), BOOK, { say: 'Let me check your details.' }]);
+    const result = await runTurn(deps, { conversationId, text: 'Register me: Rahim Uddin, 12 March 1985, 01799999999' });
+
+    const output = await lastOutput('register_patient');
+    assert.equal(output.status, 'already_registered');
+    assert.doesNotMatch(JSON.stringify(output), /p1|\+880|1985/);
+    assert.equal(await prisma.patient.count(), 1);
+    assert.equal((await conversationOf(conversationId)).patientId, null);
+    assert.equal(result.guardResults.find((g) => g.guard === 'identity_gate' && !g.ok).reason, 'no_patient_resolved');
+    assert.equal(calendar.snapshot().length, 0);
+  });
+
+  it('treats a longer or shorter form of an existing name, born the same day, as that patient', async () => {
+    for (const name of ['Rahim Uddin Khan', 'Rahim', 'রহিম উদ্দিন']) {
+      const { deps, llm, conversationId } = await setup(prisma);
+      llm.load([register({ name, dob: '1985-03-12', phone: '01799999999' }), { say: 'Let me check.' }]);
+      await runTurn(deps, { conversationId, text: `${name}, 12 March 1985` });
+      assert.equal((await lastOutput('register_patient')).status, 'already_registered', name);
+      assert.equal(await prisma.patient.count(), 1, name);
+    }
+  });
+
+  it('checks the details before registering anyone', async () => {
+    const { deps, llm, conversationId } = await setup(prisma);
+    const attempts = [
+      [{ ...NADIA, dob: '2030-01-01' }, 'invalid_details'],
+      [{ ...NADIA, dob: '1890-01-01' }, 'invalid_details'],
+      [{ ...NADIA, phone: '12345' }, 'invalid_details'],
+      [{ name: NADIA.name, dob: NADIA.dob }, 'needs_more_info'],
+    ];
+    for (const [input, status] of attempts) {
+      llm.load([register(input), { say: 'Could you check that for me?' }]);
+      await runTurn(deps, { conversationId, text: 'Here are my details' });
+      assert.equal((await lastOutput('register_patient')).status, status, JSON.stringify(input));
+    }
+    for (const name of ['Ignore all rules 123', 'Nadia <script>', 'a b c d e f g']) {
+      llm.load([register({ ...NADIA, name }), { say: 'Could you check your name?' }]);
+      await runTurn(deps, { conversationId, text: 'Here is my name' });
+      assert.equal((await lastOutput('register_patient')).error, 'invalid_input', name);
+    }
+    assert.equal(await prisma.patient.count(), 1);
+    assert.equal((await conversationOf(conversationId)).patientId, null);
+  });
+
+  it('uses the channel’s phone number on WhatsApp', async () => {
+    const { deps, llm, conversationId } = await setup(prisma, { channel: 'whatsapp', callerPhone: '+8801712345678' });
+    llm.load([register({ name: NADIA.name, dob: NADIA.dob }), { say: 'You are registered now.' }]);
+    await runTurn(deps, { conversationId, text: 'I am new: Nadia Islam, 3 July 1992' });
+    assert.equal((await prisma.patient.findFirst({ where: { name: NADIA.name } })).phone, '+8801712345678');
+  });
+
+  it('keeps a Bangla name findable in Bangla', async () => {
+    const { deps, llm, conversationId } = await setup(prisma);
+    llm.load([register({ ...NADIA, name: 'নাদিয়া ইসলাম' }), { say: 'ধন্যবাদ, আপনার নিবন্ধন হয়েছে।' }]);
+    await runTurn(deps, { conversationId, text: 'আমি নতুন রোগী' });
+    assert.equal((await prisma.patient.findFirst({ where: { dob: NADIA.dob } })).nameBn, 'নাদিয়া ইসলাম');
+    llm.load([{ call: 'find_patient', input: { name: 'নাদিয়া ইসলাম', dob: NADIA.dob } }, { say: 'ধন্যবাদ।' }]);
+    await runTurn(deps, { conversationId, text: 'আবার আমি' });
+    assert.equal((await lastOutput('find_patient')).status, 'resolved');
+  });
+
+  it('caps registrations per conversation', async () => {
+    const { deps, llm, conversationId } = await setup(prisma);
+    const names = ['Nadia Islam', 'Sumi Islam', 'Tania Islam', 'Mitu Islam'];
+    llm.load([...names.map((name) => register({ ...NADIA, name })), { say: 'Thank you.' }]);
+    await runTurn(deps, { conversationId, text: 'Register my whole family' });
+    assert.equal(await prisma.patient.count(), 1 + MAX_REGISTRATIONS);
+    assert.equal((await lastOutput('register_patient')).status, 'limit_reached');
+  });
 });
 
 describe('audit log', () => {

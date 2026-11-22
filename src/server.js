@@ -5,8 +5,7 @@ import Fastify from 'fastify';
 
 import { ClaudeClient } from './agent/llm.js';
 import { CalcomAdapter } from './calendar/calcom.js';
-import { demoCalendar } from './calendar/demo.js';
-import { FakeAdapter } from './calendar/fake.js';
+import { DbCalendarAdapter } from './calendar/db.js';
 import { registerVapiChannel } from './channels/vapi.js';
 import { registerWebChannel } from './channels/web.js';
 import { registerWhatsappChannel } from './channels/whatsapp.js';
@@ -33,24 +32,26 @@ export async function buildServer(deps, options = {}) {
   return app;
 }
 
-function buildCalendar() {
-  if (config.calendar.adapter === 'calcom') {
-    return new CalcomAdapter({ ...config.calendar.calcom, tz: config.tz });
-  }
-  const calendar = new FakeAdapter();
-  calendar.seed(demoCalendar(new Date(), config.tz));
-  return calendar;
+function buildCalendar(prisma) {
+  const { adapter } = config.calendar;
+  if (adapter === 'calcom') return new CalcomAdapter({ ...config.calendar.calcom, tz: config.tz });
+  if (adapter === 'db') return new DbCalendarAdapter({ prisma, tz: config.tz });
+  throw new Error(`Unknown CALENDAR_ADAPTER "${adapter}". Use "db" (the demo calendar in Postgres) or "calcom".`);
 }
 
 async function main() {
+  const prisma = createPrisma(config.databaseUrl);
   const deps = {
-    prisma: createPrisma(config.databaseUrl),
-    calendar: buildCalendar(),
+    prisma,
+    calendar: buildCalendar(prisma),
     llm: new ClaudeClient(config.llm),
     tz: config.tz,
     clinicName: config.clinicName,
   };
   const app = await buildServer(deps, { logger: true });
+  if ((await deps.calendar.listProviders()).length === 0) {
+    app.log.warn('The calendar has no providers. For the demo calendar, run `npm run db:seed`.');
+  }
   await app.listen({ port: config.port, host: '0.0.0.0' });
 }
 

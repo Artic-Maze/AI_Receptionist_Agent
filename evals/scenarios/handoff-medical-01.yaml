@@ -6,7 +6,7 @@ allow_unused_script: true
 description: A medical question goes straight to a person. The model is never asked.
 seed:
   patients:
-    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801000000001", dob: "1985-03-12" }
 turns:
   - user: "Should I take paracetamol before my appointment with Dr. Karim?"
     script:

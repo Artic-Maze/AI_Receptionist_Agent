@@ -8,6 +8,7 @@
     "node": "^22.18.0 || >=24.11.0"
   },
   "scripts": {
+    "postinstall": "prisma generate",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "db:generate": "prisma generate",
@@ -28,10 +29,10 @@
     "@prisma/client": "7.10.1",
     "fastify": "^5.12.8",
     "pg": "^8.16.0",
+    "prisma": "7.10.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "js-yaml": "^5.5.0",
-    "prisma": "7.10.1"
+    "js-yaml": "^5.5.0"
   }
 }

@@ -4,7 +4,7 @@ language: en
 description: 5:30 AM in Dhaka is still the previous day in UTC. Code using UTC days would pick the wrong date.
 seed:
   patients:
-    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801711000001", dob: "1985-03-12" }
+    - { id: p1, name: "Rahim Uddin", nameBn: "রহিম উদ্দিন", phone: "+8801000000001", dob: "1985-03-12" }
   slots:
     - { provider: dr_karim, start: "2026-11-10T05:30" }
     - { provider: dr_karim, start: "2026-11-11T05:30" }
