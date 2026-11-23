@@ -509,5 +509,144 @@ describe('channels', () => {
       assert.doesNotMatch(JSON.stringify(llm.requests[0]), /Earlier words/);
       await app.close();
     });
+
+    describe('as the assistant’s model', () => {
+      const URL = '/vapi/llm/chat/completions';
+      const GREETING = { role: 'assistant', content: 'Hello, this is the clinic. How can I help you today?' };
+      const completion = (messages, extra = {}) => ({
+        model: 'receptionist',
+        stream: true,
+        messages,
+        call: { id: 'call-llm', type: 'inboundPhoneCall', customer: { number: RAHIM.phone } },
+        customer: { number: RAHIM.phone },
+        ...extra,
+      });
+      // Vapi sends its own Authorization header, and the secret in X-Vapi-Secret.
+      const vapiHeaders = { authorization: 'Bearer vapi-credential', 'x-vapi-secret': SECRET };
+      const ask = (app, body, headers = vapiHeaders) => app.inject({ method: 'POST', url: URL, headers, payload: body });
+
+      /** The text a stream carries, after checking it is well-formed. */
+      function spoken(response) {
+        assert.equal(response.statusCode, 200);
+        assert.match(response.headers['content-type'], /^text\/event-stream/);
+        const events = response.body.trim().split('\n\n').map((block) => block.replace(/^data: /, ''));
+        assert.equal(events.at(-1), '[DONE]');
+        const chunks = events.slice(0, -1).map((event) => JSON.parse(event));
+        for (const chunk of chunks) assert.equal(chunk.object, 'chat.completion.chunk');
+        assert.equal(chunks.at(-1).choices[0].finish_reason, 'stop');
+        return chunks.map((chunk) => chunk.choices[0].delta.content ?? '').join('');
+      }
+
+      it('checks the secret, whatever the Authorization header says', async () => {
+        const { deps, llm } = await setup(prisma);
+        const app = await buildServer(deps, { vapiSecret: SECRET });
+        const body = completion([GREETING, { role: 'user', content: 'Hello' }]);
+        assert.equal((await ask(app, body, {})).statusCode, 401);
+        assert.equal((await ask(app, body, { 'x-vapi-secret': 'wrong' })).statusCode, 401);
+        llm.load([{ say: 'Hello.' }, { say: 'Hello.' }]);
+        assert.equal((await ask(app, body)).statusCode, 200);
+        assert.equal((await ask(app, body, auth)).statusCode, 200);
+        await app.close();
+      });
+
+      it('speaks the guarded reply, with the call as the conversation', async () => {
+        const { deps, llm } = await setup(prisma);
+        deps.voiceEffort = 'low';
+        const app = await buildServer(deps, { vapiSecret: SECRET });
+        llm.load([{ call: 'find_patient', input: { name: 'Rahim Uddin' } }, { say: 'Hello Rahim. Which doctor would you like to see?' }]);
+        const response = await ask(app, completion([GREETING, { role: 'user', content: 'Hi, this is' }, { role: 'user', content: 'Rahim Uddin' }]));
+
+        assert.equal(spoken(response), 'Hello Rahim. Which doctor would you like to see?');
+        const conversation = await prisma.conversation.findFirst({ where: { channel: 'vapi' } });
+        assert.equal(conversation.externalId, 'call-llm');
+        assert.equal(conversation.patientId, 'p1', 'caller ID and a name identify the patient');
+        // Only the new words reach the model, joined, and with less thinking than in chat.
+        const patientMessages = llm.requests[0].filter((m) => m.role === 'user' && typeof m.content === 'string');
+        assert.deepEqual(patientMessages.map((m) => m.content), ['Hi, this is Rahim Uddin']);
+        assert.deepEqual([...new Set(llm.efforts)], ['low']);
+        await app.close();
+      });
+
+      it('continues the same conversation on the next request of the call', async () => {
+        const { deps, llm } = await setup(prisma);
+        const app = await buildServer(deps, { vapiSecret: SECRET });
+        llm.load([{ say: 'Which doctor would you like?' }]);
+        await ask(app, completion([GREETING, { role: 'user', content: 'I need an appointment' }]));
+        llm.load([{ say: 'Which day suits you?' }]);
+        const second = await ask(app, completion([
+          GREETING,
+          { role: 'user', content: 'I need an appointment' },
+          { role: 'assistant', content: 'Which doctor would you like?' },
+          { role: 'user', content: [{ type: 'text', text: 'Dr. Karim' }] },
+        ]));
+        assert.equal(spoken(second), 'Which day suits you?');
+        assert.equal(await prisma.conversation.count({ where: { channel: 'vapi' } }), 1);
+        const said = await prisma.message.findMany({ where: { role: 'user', kind: 'chat' }, orderBy: { id: 'asc' } });
+        assert.deepEqual(said.map((m) => m.content), ['I need an appointment', 'Dr. Karim']);
+        await app.close();
+      });
+
+      it('replaces a reply that fails the guards with a spoken handoff that ends the call', async () => {
+        const { deps, llm } = await setup(prisma);
+        const app = await buildServer(deps, { vapiSecret: SECRET });
+        llm.load([{ say: 'You are booked for 9:00 AM on Tuesday.' }, { say: 'You are booked for 9:00 AM on Tuesday.' }]);
+        const text = spoken(await ask(app, completion([GREETING, { role: 'user', content: 'Book me in' }])));
+        assert.doesNotMatch(text, /booked/);
+        assert.match(text, /call you back on this number\. Goodbye\.$/);
+        assert.equal((await prisma.conversation.findFirst({ where: { channel: 'vapi' } })).status, 'handed_off');
+
+        // Anything said after that gets the same ending, and the model is not asked again.
+        const later = spoken(await ask(app, completion([GREETING, { role: 'user', content: 'Hello?' }])));
+        assert.match(later, /^A member of our staff has this conversation\. .*Goodbye\.$/);
+        assert.equal(llm.remaining, 0);
+        await app.close();
+      });
+
+      it('tells a browser caller, who has no number, to call the clinic', async () => {
+        const { deps } = await setup(prisma);
+        const app = await buildServer(deps, { vapiSecret: SECRET });
+        const body = completion([GREETING, { role: 'user', content: 'I want to speak to a real person' }], {
+          call: { id: 'call-web', type: 'webCall' },
+          customer: undefined,
+        });
+        const text = spoken(await ask(app, body));
+        assert.match(text, /Please call the clinic to speak to them\. Goodbye\.$/);
+        await app.close();
+      });
+
+      it('says something safe when the request has no call id', async () => {
+        const { deps, llm } = await setup(prisma);
+        const app = await buildServer(deps, { vapiSecret: SECRET });
+        const text = spoken(await ask(app, completion([{ role: 'user', content: 'Hello' }], { call: undefined })));
+        assert.match(text, /something went wrong/);
+        assert.equal(await prisma.conversation.count({ where: { channel: 'vapi' } }), 0);
+        assert.equal(llm.requests.length, 0);
+        await app.close();
+      });
+
+      it('answers in one JSON body when streaming is off', async () => {
+        const { deps, llm } = await setup(prisma);
+        const app = await buildServer(deps, { vapiSecret: SECRET });
+        llm.load([{ say: 'How can I help?' }]);
+        const response = await ask(app, completion([GREETING, { role: 'user', content: 'Hello' }], { stream: false }));
+        const body = response.json();
+        assert.equal(body.object, 'chat.completion');
+        assert.deepEqual(body.choices[0].message, { role: 'assistant', content: 'How can I help?' });
+        await app.close();
+      });
+    });
+  });
+
+  describe('homepage call button', () => {
+    it('is offered only when a public key and assistant are configured', async () => {
+      const { deps } = await setup(prisma);
+      const voice = { publicKey: 'pk_public', assistantId: 'asst_1' };
+      const withVoice = await buildServer(deps, { voice });
+      assert.deepEqual((await withVoice.inject({ method: 'GET', url: '/api/clinic' })).json().voice, voice);
+      await withVoice.close();
+      const without = await buildServer(deps, { voice: null });
+      assert.equal((await without.inject({ method: 'GET', url: '/api/clinic' })).json().voice, null);
+      await without.close();
+    });
   });
 });

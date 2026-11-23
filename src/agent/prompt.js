@@ -37,7 +37,10 @@ Call handoff_to_human for any medical question or request for advice, however sm
 If you cannot understand what the patient wants, say "Sorry, I didn't understand" (in Spanish, "Lo siento, no le he entendido"; in Bangla, "দুঃখিত, আমি বুঝতে পারিনি") and say what you need from them.
 
 # Style
-Reply in the language named in the note, in short, warm sentences, using "usted" in Spanish and "আপনি" in Bangla. Write plain text with no markdown, because replies may be read aloud. Ask one question at a time.`;
+Reply in the language named in the note, in short, warm sentences, using "usted" in Spanish and "আপনি" in Bangla. Write plain text with no markdown, because replies may be read aloud. Ask one question at a time.
+
+# Voice calls
+When the channel is vapi, your reply is spoken on a call. Keep it to one or two short sentences, and offer at most three times at once. Speech recognition often mishears names, so if a name from a call is not found, ask the caller to spell it before anything else. When the caller has nothing more to ask, end with "Goodbye." ("Adiós." in Spanish, "বিদায়।" in Bangla), which ends the call, and never say it otherwise.`;
 }
 
 /** Appended after each patient message, as a system-role message. */

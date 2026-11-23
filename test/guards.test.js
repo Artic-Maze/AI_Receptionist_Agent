@@ -5,7 +5,7 @@ import { FakeAdapter } from '../src/calendar/fake.js';
 import { checkAvailabilityGrounding, loadGrounding } from '../src/guards/availability-grounding.js';
 import { verifyBooking } from '../src/guards/booking-verify.js';
 import { checkConfirmation } from '../src/guards/confirmation-check.js';
-import { checkPatientMessage, handoffMessage, isMisunderstanding } from '../src/guards/handoff-triggers.js';
+import { checkPatientMessage, handoffMessage, isMisunderstanding, VOICE_GOODBYE } from '../src/guards/handoff-triggers.js';
 import { checkIdentityGate } from '../src/guards/identity-gate.js';
 import { extractDates, extractTimes, splitClauses } from '../src/guards/text-extract.js';
 import { parseLocal } from '../src/time.js';
@@ -548,15 +548,32 @@ describe('handoff triggers', () => {
     assert.equal(handoffMessage('unknown_reason', 'en'), handoffMessage('default', 'en'));
   });
 
+  const REASONS = ['medical_emergency', 'medical_question', 'user_request', 'tool_error', 'booking_verify_failed', 'default', 'holding'];
+  const VARIANTS = [{}, { voice: true, phoneKnown: true }, { voice: true, phoneKnown: false }];
+
   it('never lets a code-written reply make a claim of its own', () => {
-    const reasons = ['medical_emergency', 'medical_question', 'user_request', 'tool_error', 'booking_verify_failed', 'default', 'holding'];
-    for (const reason of reasons) {
+    for (const reason of REASONS) {
       for (const language of ['en', 'es', 'bn']) {
-        const reply = handoffMessage(reason, language);
-        assert.equal(checkConfirmation({ reply, verified: [], now: NOW, tz: TZ }).ok, true, reply);
-        assert.equal(grounding({ reply }).ok, true, reply);
+        for (const variant of VARIANTS) {
+          const reply = handoffMessage(reason, language, variant);
+          assert.equal(checkConfirmation({ reply, verified: [], now: NOW, tz: TZ }).ok, true, reply);
+          assert.equal(grounding({ reply }).ok, true, reply);
+        }
       }
     }
+  });
+
+  it('ends every handoff on a call with the goodbye that hangs up', () => {
+    for (const reason of REASONS) {
+      for (const language of ['en', 'es', 'bn']) {
+        const reply = handoffMessage(reason, language, { voice: true, phoneKnown: true });
+        assert.ok(reply.endsWith(VOICE_GOODBYE[language]), reply);
+        // In chat, nothing says goodbye: the conversation stays open for staff.
+        assert.equal(handoffMessage(reason, language).includes(VOICE_GOODBYE[language]), false, reason);
+      }
+    }
+    assert.doesNotMatch(handoffMessage('medical_emergency', 'en', { voice: true, phoneKnown: true }), /call you back/);
+    assert.match(handoffMessage('medical_emergency', 'en', { voice: true, phoneKnown: true }), /999/);
   });
 });
 

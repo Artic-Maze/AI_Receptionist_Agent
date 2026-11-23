@@ -118,7 +118,75 @@ const MESSAGES = {
   },
 };
 
-export function handoffMessage(reason, language) {
-  const entry = MESSAGES[reason] ?? MESSAGES.default;
-  return entry[language] ?? entry.en;
+/**
+ * Said last on a call. The Vapi assistant hangs up on these (its endCallPhrases), so
+ * a handoff, or the agent's own goodbye, ends the call.
+ */
+export const VOICE_GOODBYE = { en: 'Goodbye.', es: 'Adiós.', bn: 'বিদায়।' };
+
+// Nobody can "reply here" on a call, so a handoff on voice ends the call instead.
+const VOICE = {
+  medical_emergency: MESSAGES.medical_emergency,
+  medical_question: {
+    en: 'I can’t give medical advice, so I’m passing this to our staff. If this is an emergency, please call 999 or go to the nearest emergency department.',
+    es: 'No puedo dar consejos médicos, así que paso su consulta a nuestro personal. Si es una emergencia, llame al 999 o acuda al servicio de urgencias más cercano.',
+    bn: 'আমি চিকিৎসা-সংক্রান্ত পরামর্শ দিতে পারি না, তাই বিষয়টি আমাদের কর্মীদের কাছে পাঠাচ্ছি। জরুরি অবস্থা হলে অনুগ্রহ করে ৯৯৯-এ কল করুন বা নিকটস্থ জরুরি বিভাগে যান।',
+  },
+  user_request: {
+    en: 'Of course. I’m passing this to a member of our staff.',
+    es: 'Por supuesto. Paso su solicitud a un miembro de nuestro personal.',
+    bn: 'অবশ্যই, বিষয়টি আমাদের একজন কর্মীর কাছে পাঠাচ্ছি।',
+  },
+  tool_error: MESSAGES.tool_error,
+  booking_verify_failed: {
+    en: 'I couldn’t verify that change, so please don’t rely on it until our staff have checked it.',
+    es: 'No he podido verificar ese cambio, así que no cuente con él hasta que nuestro personal lo haya revisado.',
+    bn: 'এই পরিবর্তনটি আমি যাচাই করতে পারিনি, তাই আমাদের কর্মীরা এটি না দেখা পর্যন্ত অনুগ্রহ করে এর ওপর নির্ভর করবেন না।',
+  },
+  default: {
+    en: 'I’m passing this to a member of our staff.',
+    es: 'Paso su solicitud a un miembro de nuestro personal.',
+    bn: 'বিষয়টি আমাদের একজন কর্মীর কাছে পাঠাচ্ছি।',
+  },
+  holding: {
+    en: 'A member of our staff has this conversation.',
+    es: 'Un miembro de nuestro personal está atendiendo esta conversación.',
+    bn: 'আমাদের একজন কর্মী কথোপকথনটি দেখছেন।',
+  },
+};
+
+// Staff can only call back a number they have. A browser call has none.
+const VOICE_NEXT = {
+  callback: {
+    en: 'They will call you back on this number.',
+    es: 'Le devolverán la llamada a este número.',
+    bn: 'তাঁরা এই নম্বরে আপনাকে ফোন করবেন।',
+  },
+  no_number: {
+    en: 'Please call the clinic to speak to them.',
+    es: 'Llame a la clínica para hablar con ellos.',
+    bn: 'তাঁদের সঙ্গে কথা বলতে অনুগ্রহ করে ক্লিনিকে ফোন করুন।',
+  },
+};
+
+const pick = (entry, language) => entry[language] ?? entry.en;
+
+/**
+ * @param {object} [options]
+ * @param {boolean} [options.voice]  a call, where the message is spoken and ends the call
+ * @param {boolean} [options.phoneKnown]  whether staff have the caller's number
+ */
+export function handoffMessage(reason, language, { voice = false, phoneKnown = false } = {}) {
+  if (!voice) return pick(MESSAGES[reason] ?? MESSAGES.default, language);
+  // Someone told to call 999 shouldn't also be told to wait for a call back.
+  const next = reason === 'medical_emergency' ? [] : [pick(VOICE_NEXT[phoneKnown ? 'callback' : 'no_number'], language)];
+  return [pick(VOICE[reason] ?? VOICE.default, language), ...next, pick(VOICE_GOODBYE, language)].join(' ');
+}
+
+/** The handoff message for this conversation's channel and language. */
+export function handoffReply(reason, conversation) {
+  return handoffMessage(reason, conversation.language, {
+    voice: conversation.channel === 'vapi',
+    phoneKnown: Boolean(conversation.state?.callerPhone),
+  });
 }

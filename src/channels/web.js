@@ -95,7 +95,12 @@ export async function clinicDirectory(deps) {
  * finished reply. The reply is never streamed word by word, because the guards have
  * to pass all of it before the patient sees any of it.
  */
-export function registerWebChannel(app, deps) {
+/**
+ * @param {object} [options]
+ * @param {{ publicKey: string, assistantId: string } | null} [options.voice]  shows the
+ *   homepage's call button. Both values are public by design.
+ */
+export function registerWebChannel(app, deps, { voice = null } = {}) {
   const { prisma } = deps;
 
   app.get('/', async (_request, reply) => {
@@ -109,7 +114,7 @@ export function registerWebChannel(app, deps) {
     async (request, reply) => {
       try {
         reply.header('Cache-Control', 'no-store');
-        return await clinicDirectory(deps);
+        return { ...(await clinicDirectory(deps)), voice };
       } catch (error) {
         request.log.error({ err: error }, 'clinic directory failed');
         return reply.code(503).send({ error: 'directory_unavailable' });

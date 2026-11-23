@@ -279,6 +279,22 @@
     cursor: pointer;
   }
   .send:disabled { opacity: .5; cursor: default; }
+  .call {
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .call:hover { background: var(--accent-soft); }
+  .call[aria-pressed="true"] { background: var(--error); border-color: var(--error); color: var(--surface); }
+  .call:disabled { opacity: .5; cursor: default; }
+  .call-status { flex: 1; align-self: center; margin: 0; font-size: .875rem; color: var(--ink-soft); }
   .restart {
     border: 0;
     background: transparent;
@@ -343,6 +359,8 @@
     <div class="messages" id="messages" aria-live="polite"></div>
     <div class="notice" id="notice" hidden></div>
     <form id="form">
+      <button class="call" id="call" type="button" aria-pressed="false" hidden></button>
+      <p class="call-status" id="call-status" role="status" hidden></p>
       <textarea id="input" rows="1" maxlength="2000" autocomplete="off"></textarea>
       <button class="send" id="send" type="submit"></button>
     </form>
@@ -395,6 +413,14 @@
       introduce: (name, dob) => `Hi, I’m ${name}, born ${dob}.`,
       register: 'Hi, I’m a new patient and I’d like to register.',
       formatDob: (d, month, y) => `${d} ${month} ${y}`,
+      call: 'Call',
+      endCall: 'End call',
+      connecting: 'Connecting…',
+      allowMic: 'Allow the microphone when your browser asks.',
+      onCall: 'On a call. Speak when you’re ready.',
+      callEnded: 'Call ended.',
+      callFailed: 'The call couldn’t start. Please try again.',
+      micBlocked: 'The call needs your microphone. Allow it in your browser’s settings, then try again.',
     },
     es: {
       title: 'Recepción de la clínica',
@@ -444,6 +470,14 @@
       introduce: (name, dob) => `Hola, soy ${name}, nací el ${dob}.`,
       register: 'Hola, es mi primera vez en la clínica y quisiera registrarme.',
       formatDob: (d, month, y) => `${d} de ${month} de ${y}`,
+      call: 'Llamar',
+      endCall: 'Colgar',
+      connecting: 'Conectando…',
+      allowMic: 'Permita el micrófono cuando el navegador se lo pida.',
+      onCall: 'En llamada. Hable cuando quiera.',
+      callEnded: 'Llamada finalizada.',
+      callFailed: 'No se pudo iniciar la llamada. Inténtelo de nuevo.',
+      micBlocked: 'La llamada necesita su micrófono. Permítalo en la configuración del navegador y vuelva a intentarlo.',
     },
   };
 
@@ -625,6 +659,7 @@
       if (!response.ok) throw new Error(String(response.status));
       directory = await response.json();
       directoryState = 'ready';
+      renderCall();
     } catch {
       // Keep showing the last schedule if there is one; it is refreshed after each reply.
       if (!directory) directoryState = 'failed';
@@ -684,9 +719,11 @@
     notice.textContent = t.handedOff;
     notice.hidden = !handedOff;
     toggles.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === language)));
+    renderCall();
   }
 
   function restart() {
+    if (callState !== 'idle') return;
     conversationId = null;
     handedOff = false;
     messages.replaceChildren();
@@ -714,7 +751,7 @@
 
   async function submit(text) {
     const message = text.trim();
-    if (!message || busy) return;
+    if (!message || busy || callState !== 'idle') return;
     busy = true;
     send.disabled = true;
     messages.querySelector('.starters')?.remove();
@@ -760,6 +797,112 @@
     }
   }
 
+  // ---- Voice ----------------------------------------------------------------
+  // A browser call to the same receptionist, through Vapi. The server sees it as a
+  // call like any other; this page only shows what was said.
+
+  const VAPI_SDK = 'https://cdn.jsdelivr.net/npm/@vapi-ai/web@3.1.0/+esm';
+  let callState = 'idle'; // idle | connecting | live
+  let vapi = null;
+  // Speech arrives a sentence at a time; consecutive sentences share a bubble.
+  let lastSpoken = null;
+  let refreshTimer = null;
+
+  function renderCall() {
+    const t = TEXT[language];
+    const button = $('call');
+    const status = $('call-status');
+    const onCall = callState !== 'idle';
+    button.hidden = !directory?.voice && !onCall;
+    button.disabled = callState === 'connecting';
+    button.textContent = { idle: t.call, connecting: t.connecting, live: t.endCall }[callState];
+    button.setAttribute('aria-pressed', String(callState === 'live'));
+    status.hidden = !onCall;
+    status.textContent = callState === 'live' ? t.onCall : t.allowMic;
+    input.hidden = onCall;
+    send.hidden = onCall;
+    $('restart').disabled = onCall;
+  }
+
+  function setCall(state) {
+    callState = state;
+    renderCall();
+  }
+
+  function callEnded() {
+    if (callState === 'idle') return;
+    setCall('idle');
+    lastSpoken = null;
+    add('progress', TEXT[language].callEnded);
+    loadDirectory();
+  }
+
+  function callFailed(error) {
+    setCall('idle');
+    const blocked = /^microphone-preflight-(NotAllowed|Security)/.test(error?.type ?? '');
+    add('error', blocked ? TEXT[language].micBlocked : TEXT[language].callFailed);
+  }
+
+  function onVoiceMessage(message) {
+    if (!message?.type?.startsWith('transcript') || message.transcriptType !== 'final') return;
+    const text = message.transcript?.trim();
+    if (!text) return;
+    const role = message.role === 'user' ? 'user' : 'agent';
+    if (lastSpoken?.role === role) {
+      lastSpoken.element.textContent += ` ${text}`;
+      messages.scrollTop = messages.scrollHeight;
+    } else {
+      lastSpoken = { role, element: add(`bubble ${role}`, text) };
+    }
+    if (role === 'agent') {
+      // A booking made on the call changes the free times beside it.
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(loadDirectory, 1500);
+    }
+  }
+
+  async function startCall() {
+    if (callState !== 'idle' || !directory?.voice) return;
+    // A call is its own conversation, so the chat starts afresh.
+    conversationId = null;
+    handedOff = false;
+    lastSpoken = null;
+    progress = null;
+    messages.replaceChildren();
+    renderChrome();
+    setCall('connecting');
+    let lastError = null;
+    try {
+      if (!vapi) {
+        // The package is CommonJS; the CDN's ES module wraps it, so the class is one level down.
+        const sdk = await import(VAPI_SDK);
+        const Vapi = sdk.default?.default ?? sdk.default;
+        vapi = new Vapi(directory.voice.publicKey);
+        vapi.on('call-start', () => setCall('live'));
+        vapi.on('call-end', callEnded);
+        vapi.on('message', onVoiceMessage);
+        vapi.on('error', (error) => {
+          lastError = error;
+          console.error('Call error', error);
+        });
+      }
+      const started = await vapi.start(directory.voice.assistantId);
+      if (!started) callFailed(lastError);
+    } catch (error) {
+      console.error('Call failed to start', error);
+      callFailed(lastError);
+    }
+  }
+
+  $('call').addEventListener('click', async () => {
+    if (callState === 'idle') return startCall();
+    try {
+      await vapi?.stop();
+    } finally {
+      callEnded();
+    }
+  });
+
   $('form').addEventListener('submit', (event) => {
     event.preventDefault();
     submit(input.value);
@@ -783,7 +926,8 @@
       language = button.dataset.lang;
       renderChrome();
       renderDirectory();
-      if (!conversationId) {
+      // A call has no chat conversation, but its transcript is still on screen.
+      if (!conversationId && callState === 'idle' && !messages.querySelector('.bubble.user')) {
         messages.replaceChildren();
         add('bubble agent', TEXT[language].greeting);
         renderStarters();

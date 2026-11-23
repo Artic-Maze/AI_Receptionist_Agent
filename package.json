@@ -20,7 +20,8 @@
     "evals:core": "node evals/runner.js --llm=claude --core",
     "evals:live": "node evals/runner.js --llm=claude",
     "evals:mutation": "node evals/mutation.js",
-    "smoke:contract": "node evals/smoke/contract.js"
+    "smoke:contract": "node evals/smoke/contract.js",
+    "vapi:assistant": "node scripts/vapi-assistant.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.4.0",

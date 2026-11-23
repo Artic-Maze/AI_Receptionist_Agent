@@ -16,6 +16,7 @@ export class ScriptedLLM {
   #queue = [];
   #calls = 0;
   requests = [];
+  efforts = [];
   exhausted = false;
 
   /** Adds the steps for the next turn. */
@@ -29,6 +30,7 @@ export class ScriptedLLM {
 
   async complete(request) {
     this.requests.push(structuredClone(request.messages));
+    this.efforts.push(request.effort);
     const step = this.#queue.shift();
     const empty = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
     const base = { usage: empty, model: 'scripted' };
