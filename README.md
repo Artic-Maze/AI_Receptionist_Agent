@@ -208,7 +208,13 @@ The homepage lists the doctors with their hours and this week's free times, whic
 
 1. Deploy, and set `PUBLIC_URL` to the server's https address. Vapi won't call localhost, so a local server needs a tunnel.
 2. Set `VAPI_SECRET` to a long random string, and `VAPI_API_KEY` to your private key from the Vapi dashboard.
-3. Run `npm run vapi:assistant` to see the assistant, then `npm run vapi:assistant -- --push` to create it. Put the id it prints in `VAPI_ASSISTANT_ID`, so later pushes update the same assistant.
+3. Run `npm run vapi:assistant` to see the assistant, then `npm run vapi:assistant -- --push` to create it. Put the id it prints in `VAPI_ASSISTANT_ID`, so later pushes update the same assistant. On a server deployed with `docker-compose.yml`, run it from the image the `migrate` step builds, on Docker's default network. The `migrate` service is only on the database network, which may have no internet access. `docker run --env-file` keeps quotes around values, so leave them out of `.env`:
+
+   ```bash
+   docker run --rm --env-file .env ai_receptionist_agent-migrate node scripts/vapi-assistant.js --push
+   ```
+
+   After setting `VAPI_ASSISTANT_ID`, run `docker compose up -d --force-recreate app` so the app picks it up.
 4. For phone calls, attach a phone number to the assistant in the Vapi dashboard. For calls from the homepage, also set `VAPI_PUBLIC_KEY`, and restrict that key to your site's origin and this assistant. The homepage then shows a **Call** button, and the call's transcript appears in the chat panel.
 
 What changes on a call:

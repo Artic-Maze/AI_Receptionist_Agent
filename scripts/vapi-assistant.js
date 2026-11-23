@@ -54,11 +54,18 @@ export function assistantConfig({
 /** Creates the assistant, or updates it when there is an id. */
 export async function pushAssistant(body, { apiKey, assistantId, fetchImpl = fetch }) {
   const url = `https://api.vapi.ai/assistant${assistantId ? `/${encodeURIComponent(assistantId)}` : ''}`;
-  const response = await fetchImpl(url, {
-    method: assistantId ? 'PATCH' : 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: assistantId ? 'PATCH' : 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    // Node's own message is just "fetch failed"; the reason is in its cause.
+    const reason = error.cause?.code ?? error.cause?.message ?? error.message;
+    throw new Error(`Couldn't reach api.vapi.ai (${reason}). This needs internet access, which a container on an internal Docker network doesn't have.`);
+  }
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`Vapi answered ${response.status}: ${JSON.stringify(result.message ?? result)}`);
   return result;

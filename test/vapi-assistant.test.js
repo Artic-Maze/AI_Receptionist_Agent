@@ -50,6 +50,13 @@ describe('vapi assistant', () => {
     assert.equal(calls[0].body.model.url, body.model.url);
   });
 
+  it('says why Vapi couldn’t be reached', async () => {
+    const fetchImpl = async () => {
+      throw new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo EAI_AGAIN api.vapi.ai'), { code: 'EAI_AGAIN' }) });
+    };
+    await assert.rejects(pushAssistant(assistantConfig(OPTIONS), { apiKey: 'priv', fetchImpl }), /reach api\.vapi\.ai \(EAI_AGAIN\)/);
+  });
+
   it('reports what Vapi rejected', async () => {
     const fetchImpl = async () =>
       new Response(JSON.stringify({ message: ['voice.voiceId must be a string'] }), { status: 400 });
