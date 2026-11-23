@@ -79,6 +79,12 @@ describe('ClaudeClient', () => {
     assert.equal(headers['anthropic-version'], '2026-10-21');
   });
 
+  it('lets one request think less than the client default', async () => {
+    respondWith = message([{ type: 'text', text: 'Hello' }]);
+    await build().complete({ ...request, effort: 'low' });
+    assert.equal(received.body.output_config.effort, 'low');
+  });
+
   it('defaults to degrading on a prefix mismatch, and can fail instead', async () => {
     respondWith = message([{ type: 'text', text: 'Hello' }]);
     await build().complete(request);

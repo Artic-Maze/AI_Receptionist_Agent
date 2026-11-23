@@ -14,7 +14,8 @@ import Anthropic from '@anthropic-ai/sdk';
  * @property {string} model  the model that actually answered
  *
  * @typedef {object} LLMClient
- * @property {(request: { system: string, tools: object[], messages: object[] }) => Promise<LLMResponse>} complete
+ * @property {(request: { system: string, tools: object[], messages: object[], effort?: string }) => Promise<LLMResponse>} complete
+ *   `effort` overrides the client's own for one request.
  */
 
 // `fallbacks: "default"` retries a safety-classifier decline on another model. A
@@ -59,14 +60,14 @@ export class ClaudeClient {
     this.#maxTokens = maxTokens;
   }
 
-  async complete({ system, tools, messages }) {
+  async complete({ system, tools, messages, effort }) {
     const response = await this.#client.beta.messages.create({
       model: this.#model,
       max_tokens: this.#maxTokens,
       betas: [FALLBACK_BETA, THINKING_BINDING_BETA],
       fallbacks: 'default',
       thinking: { type: 'adaptive', block_binding: { prefix_mismatch_behavior: this.#prefixMismatch } },
-      output_config: { effort: this.#effort },
+      output_config: { effort: effort ?? this.#effort },
       cache_control: { type: 'ephemeral' },
       system,
       tools,

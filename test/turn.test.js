@@ -504,6 +504,28 @@ describe('registration', () => {
     assert.equal((await calendar.listBookingsForPatient(patient.id)).length, 1);
   });
 
+  it('does not hand off a new patient for the lookups that registering takes', async () => {
+    const { deps, llm, conversationId } = await setup(prisma);
+    const lookup = (input) => ({ call: 'find_patient', input: { dob: NADIA.dob, ...input } });
+    // Both scripts in one turn, as the prompt asks, then once more with the phone number.
+    llm.load([
+      lookup({ name: NADIA.name }),
+      lookup({ name: 'নাদিয়া ইসলাম' }),
+      { say: 'I couldn’t find you. Are you new? What is your phone number?' },
+    ]);
+    assert.equal((await runTurn(deps, { conversationId, text: 'Nadia Islam, 1992/7/3' })).handedOff, false);
+    llm.load([
+      lookup({ name: NADIA.name, phone: NADIA.phone }),
+      { say: 'Is that Nadia Islam, born 3 July 1992, on 01712345678?' },
+    ]);
+    assert.equal((await runTurn(deps, { conversationId, text: NADIA.phone })).handedOff, false);
+    llm.load([register(NADIA), { say: 'Thank you, Nadia, you are registered now.' }]);
+    const registered = await runTurn(deps, { conversationId, text: 'Yes, that’s right' });
+
+    assert.equal(registered.handedOff, false);
+    assert.equal((await lastOutput('register_patient')).status, 'registered');
+  });
+
   it('will not register anyone over an existing patient', async () => {
     const { deps, llm, calendar, conversationId } = await setup(prisma);
     llm.load([register({ name: 'Rahim Uddin', dob: '1985-03-12', phone: '01799999999' }), BOOK, { say: 'Let me check your details.' }]);

@@ -4,7 +4,7 @@ import { checkAvailabilityGrounding, loadGrounding } from '../guards/availabilit
 import { checkConfirmation } from '../guards/confirmation-check.js';
 import {
   checkPatientMessage,
-  handoffMessage,
+  handoffReply,
   isMisunderstanding,
   MAX_MISUNDERSTANDINGS,
 } from '../guards/handoff-triggers.js';
@@ -23,6 +23,7 @@ export const MAX_TOOL_CALLS_PER_TURN = 6;
  * @property {() => Date} [clock]
  * @property {string} [tz]
  * @property {string} [clinicName]
+ * @property {string} [voiceEffort]  model effort on calls, where every second of thinking is silence
  * @property {Set<string>} [disabledGuards]  only the regression suite sets this
  */
 
@@ -75,13 +76,14 @@ async function runModel(ctx, push, history, onEvent) {
   const { deps, conversation, turn, tz, now } = ctx;
   const { prisma, llm, calendar } = deps;
   const system = buildSystemPrompt({ clinicName: deps.clinicName ?? config.clinicName });
+  const effort = conversation.channel === 'vapi' ? deps.voiceEffort : undefined;
   let toolCalls = 0;
   let regenerated = false;
 
   for (;;) {
     let response;
     try {
-      response = await llm.complete({ system, tools: LLM_TOOLS, messages: history });
+      response = await llm.complete({ system, tools: LLM_TOOLS, messages: history, ...(effort ? { effort } : {}) });
     } catch (error) {
       turn.forcedHandoff = { reason: 'llm_error', detail: error.message };
       return null;
@@ -205,7 +207,7 @@ async function runLocked(deps, { conversationId, text, externalId, onEvent = () 
   // Once staff have it, the agent stays out of the conversation.
   if (conversation.status !== 'active') {
     await push('user', 'display', text, externalId);
-    const reply = handoffMessage('holding', language);
+    const reply = handoffReply('holding', conversation);
     await push('assistant', 'display', reply);
     await saveConversation(prisma, conversation);
     return {
@@ -260,7 +262,7 @@ async function runLocked(deps, { conversationId, text, externalId, onEvent = () 
       turn.guardResults.push({ guard: 'handoff_triggers', ok: false, trigger: handoff.reason, source: handoff.source ?? 'system' });
     }
     await recordHandoff(prisma, conversation, handoff);
-    reply = handoffMessage(handoff.reason, language);
+    reply = handoffReply(handoff.reason, conversation);
     await push('assistant', 'display', reply);
   }
 

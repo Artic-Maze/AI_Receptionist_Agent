@@ -19,7 +19,8 @@ The evaluation suite is the product. Anyone can demo a booking; the harder quest
 | **Claude integration** | Request format checked against a local stub | **First run against the real API** |
 | **Scenarios on a real model** | Not yet run | **First live run** |
 | Cal.com adapter | Contract suite against a stub written from the API docs | Contract run against a real sandbox |
-| WhatsApp and Vapi | Tested with their documented payloads | Connecting real accounts |
+| WhatsApp | Tested with its documented payloads | Connecting a real account |
+| Vapi voice | Endpoint and assistant config checked against the types Vapi publishes. The call button was driven in headless Chrome as far as Vapi's API | **First real call**: Bangla speech recognition and voice, and how long a turn takes |
 
 A scripted run shows the guards hold when a model misbehaves. It says nothing about how well a real model handles these conversations, and the report says so at the top of any offline run.
 
@@ -137,9 +138,18 @@ npm run evals -- --llm=claude --only=happy-book-en-01 --runs=1
 - two external Docker networks: `proxy`, which Traefik is on, and `pg`, which Postgres is on
 - a Traefik entrypoint named `websecure` and a certificate resolver named `le`
 
-Change the domain in the `Host(...)` rule to your own. Then create `.env` from `.env.example` and set:
+Change the domain in the `Host(...)` rule to your own. Then give the app its own login and database on that Postgres, as its superuser (the container's `POSTGRES_USER`, which is `postgres` unless it was set). A hex password needs no escaping in a URL:
 
-- `DATABASE_URL`, with the Postgres container's name as the host, such as `postgresql://user:password@postgres:5432/receptionist`
+```bash
+openssl rand -hex 24
+docker exec -it postgres psql -U postgres -d postgres \
+  -c "CREATE ROLE receptionist LOGIN PASSWORD '<password>';" \
+  -c "CREATE DATABASE receptionist OWNER receptionist;"
+```
+
+The role has to own the database, because since Postgres 15 only a database's owner can create tables in its default schema. Then create `.env` from `.env.example` and set:
+
+- `DATABASE_URL=postgresql://receptionist:<password>@postgres:5432/receptionist`, where `postgres` is the Postgres container's name
 - `ANTHROPIC_API_KEY`, because `ant auth login` isn't available inside the container
 - `CLINIC_NAME` and `CLINIC_TZ`, if the defaults don't suit
 
@@ -152,7 +162,7 @@ docker compose run --rm --build migrate
 docker compose up -d --build
 ```
 
-Run both on every deploy. Without `--build`, `migrate` would use the migrations from its last build. It creates the database if it doesn't exist, which needs a Postgres user that is allowed to create databases. `migrate` is in the `tools` profile, so `up` never starts it. To follow the logs, run `docker compose logs -f app`.
+Run both on every deploy. Without `--build`, `migrate` would use the migrations from its last build. `migrate` is in the `tools` profile, so `up` never starts it. To follow the logs, run `docker compose logs -f app`.
 
 On the first deploy, and whenever the doctors or their hours in `prisma/seed.js` change, seed the demo clinic as well. Seeding keeps bookings and registered patients.
 
@@ -190,28 +200,27 @@ The homepage lists the doctors with their hours and this week's free times, whic
 | --- | --- | --- |
 | Web widget | `/` and `/chat` (SSE), with `/api/clinic` for the homepage | Name and date of birth, asked in chat |
 | WhatsApp Cloud API | `/whatsapp` | Sender's number |
-| Vapi voice | `/vapi/tools/*` and `/vapi/events` | Caller ID |
+| Vapi voice | `/vapi/llm/chat/completions`, also `/vapi/tools/*` and `/vapi/events` | Caller ID |
 
 **WhatsApp.** Set `WHATSAPP_*` in `.env` and point the webhook at `/whatsapp`. Signatures are checked against the raw body, and Meta's retries are ignored, so a redelivered message can't book twice.
 
-**Vapi.** Give the assistant one custom tool and point its server at `/vapi/tools/receptionist_turn`, with `VAPI_SECRET` as the credential:
+**Vapi.** This server is the Vapi assistant's model. Vapi sends what the caller says to `/vapi/llm/chat/completions`, and speaks the reply exactly as the guards passed it. To set it up:
 
-```json
-{
-  "type": "function",
-  "function": {
-    "name": "receptionist_turn",
-    "description": "Pass on what the caller just said and get the reply to speak.",
-    "parameters": {
-      "type": "object",
-      "properties": { "utterance": { "type": "string" } },
-      "required": ["utterance"]
-    }
-  }
-}
-```
+1. Deploy, and set `PUBLIC_URL` to the server's https address. Vapi won't call localhost, so a local server needs a tunnel.
+2. Set `VAPI_SECRET` to a long random string, and `VAPI_API_KEY` to your private key from the Vapi dashboard.
+3. Run `npm run vapi:assistant` to see the assistant, then `npm run vapi:assistant -- --push` to create it. Put the id it prints in `VAPI_ASSISTANT_ID`, so later pushes update the same assistant.
+4. For phone calls, attach a phone number to the assistant in the Vapi dashboard. For calls from the homepage, also set `VAPI_PUBLIC_KEY`, and restrict that key to your site's origin and this assistant. The homepage then shows a **Call** button, and the call's transcript appears in the chat panel.
 
-Tell the assistant to pass on the caller's exact words and speak the result word for word. This runs the whole agent turn, and it's the only setup where the reply guards see what gets said. The individual tools are also exposed (`/vapi/tools/create_booking` and so on), with their pre-tool guards and read-back, but if Vapi's own model calls them, nothing checks what it says out loud. Send server events to `/vapi/events` to store transcripts.
+What changes on a call:
+
+- **Caller ID is an identity hint**, as on WhatsApp. Browser calls have none.
+- **The model thinks less** (`LLM_VOICE_EFFORT`, default `low`), because the caller hears silence while it thinks. The guards are code, so they hold either way.
+- **A handoff ends the call.** The message tells the caller that staff will call back on their number, or, on a browser call, to call the clinic. It ends with "Goodbye", and the assistant hangs up on that word, as it does on the agent's own goodbye.
+- **Speech recognition and voice** are Google's transcriber in Multilingual mode and ElevenLabs v3, the options Vapi documents for Bangla. Neither has been tried on a real call. Set `VAPI_TRANSCRIBER` or `VAPI_VOICE` to replace them.
+
+The assistant has no server webhook, so the secret is sent only to this server: a browser caller can override an assistant's webhook, but not its model's URL. A phone-only assistant can add a webhook to `/vapi/events` to store Vapi's own transcripts.
+
+The older setup still works, with Vapi's own model calling one `receptionist_turn` tool at `/vapi/tools/receptionist_turn`. Every guard runs on the reply, but Vapi's model is the one speaking, and could word it differently. The individual tools are exposed too (`/vapi/tools/create_booking` and so on), with their pre-tool guards and read-back, but if Vapi's model calls them, nothing checks what it says out loud.
 
 **Cal.com.** Set `CALENDAR_ADAPTER=calcom`, `CALCOM_API_KEY`, and `CALCOM_PROVIDERS` with one event type per provider. `npm run smoke:contract` checks the adapter against your sandbox, creating and cancelling one real booking.
 
@@ -227,7 +236,10 @@ Tell the assistant to pass on the caller's exact words and speak the result word
 
 ## Known limits
 
-- **Nobody is notified of a handoff.** Handoffs are recorded in a table, and there is no staff screen or alert yet.
+- **Nobody is notified of a handoff.** Handoffs are recorded in a table, and there is no staff screen or alert yet. On a call, the caller is told staff will call back, so that needs one before real calls.
+- **Calls aren't transferred.** A handoff ends the call rather than putting the caller through to staff.
+- **Talking over the agent.** If a caller speaks before a turn has finished, the turn still completes, since a booking can't be half-made. Vapi drops the reply, and the model assumes the caller heard it.
+- **Silence while a turn runs.** A turn that checks availability and then books makes several model calls before anything is said. How long that takes on a real call hasn't been measured.
 - **One server process.** Turns are serialised per conversation in memory. Several instances would need a shared lock.
 - **A crash can leave a booking unlogged.** Calendar and database can't commit atomically. A failed audit write undoes the booking, but a crash at that exact moment would not, and there is no reconciliation job.
 - **The audit trigger stops the application, not a database owner.** Production should run the app under a role that doesn't own the table.

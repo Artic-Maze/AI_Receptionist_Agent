@@ -3,9 +3,15 @@ import { MAX_IDENTITY_FAILURES } from '../guards/identity-gate.js';
 /** The regression suite switches guards off one at a time to prove the evals notice. */
 export const guardDisabled = (ctx, name) => Boolean(ctx.deps.disabledGuards?.has(name));
 
-/** Counts a failed identity attempt. After the allowed retries, a person takes over. */
+/**
+ * Counts a failed identity attempt. After the allowed retries, a person takes over.
+ * The count is of patient messages, not lookups: retrying a name in the other script
+ * within the same turn asks the patient nothing new, so it doesn't count again.
+ */
 export function noteIdentityFailure(ctx) {
   if (guardDisabled(ctx, 'identity_gate')) return;
+  if (ctx.turn.identityFailureNoted) return;
+  ctx.turn.identityFailureNoted = true;
   const { state } = ctx.conversation;
   state.identityFailures = (state.identityFailures ?? 0) + 1;
   if (state.identityFailures > MAX_IDENTITY_FAILURES) {

@@ -28,7 +28,11 @@ export const config = {
   llm: {
     model: env.LLM_MODEL ?? 'claude-opus-5-5',
     effort: env.LLM_EFFORT ?? 'medium',
+    /** On calls the caller hears silence while the model thinks, so it thinks less. */
+    voiceEffort: env.LLM_VOICE_EFFORT || 'low',
   },
+  /** Where Vapi reaches this server: https, public, no trailing slash. */
+  publicUrl: env.PUBLIC_URL?.replace(/\/+$/, ''),
   judgeModel: env.JUDGE_MODEL ?? env.LLM_MODEL ?? 'claude-opus-5-5',
   calendar: {
     /** db: the demo calendar in Postgres. calcom: the real Cal.com API. */
@@ -48,6 +52,12 @@ export const config = {
     apiVersion: env.WHATSAPP_API_VERSION ?? 'v23.0',
   },
   vapi: {
+    /** Shared with Vapi, which sends it on every request to this server. */
     secret: env.VAPI_SECRET,
+    /** Private key, only for `npm run vapi:assistant -- --push`. */
+    apiKey: env.VAPI_API_KEY,
+    /** Both public: the homepage needs them to start a call in the browser. */
+    publicKey: env.VAPI_PUBLIC_KEY,
+    assistantId: env.VAPI_ASSISTANT_ID,
   },
 };

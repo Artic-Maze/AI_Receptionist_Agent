@@ -25,7 +25,10 @@ export async function buildServer(deps, options = {}) {
   });
   await app.register(rateLimit, { global: false });
 
-  registerWebChannel(app, deps);
+  const { publicKey, assistantId } = config.vapi;
+  registerWebChannel(app, deps, {
+    voice: 'voice' in options ? options.voice : publicKey && assistantId ? { publicKey, assistantId } : null,
+  });
   registerWhatsappChannel(app, deps, {
     whatsapp: options.whatsapp ?? config.whatsapp,
     fetchImpl: options.fetchImpl,
@@ -50,6 +53,7 @@ async function main() {
     prisma,
     calendar: buildCalendar(prisma),
     llm: new ClaudeClient(config.llm),
+    voiceEffort: config.llm.voiceEffort,
     tz: config.tz,
     clinicName: config.clinicName,
   };
