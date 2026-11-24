@@ -1,6 +1,6 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 
-import { guardDisabled, saveConversation, withLock } from '../agent/state.js';
+import { detectLanguage, guardDisabled, saveConversation, withLock } from '../agent/state.js';
 import { findOrStartConversation, recordHandoff, runTurn } from '../agent/turn.js';
 import { auditCreate } from '../audit/log.js';
 import { config } from '../config.js';
@@ -188,8 +188,58 @@ export function newCallerText(messages) {
     .join(' ');
 }
 
-/** The reply to speak, from a full agent turn. */
-async function completionText(deps, body, log) {
+/**
+ * Said while a turn runs tools, so the caller isn't left in silence. Like the handoff
+ * messages, they are written here rather than by the model, and claim nothing.
+ */
+export const HOLDING_PHRASES = {
+  find_patient: {
+    en: 'Let me look up your details.',
+    es: 'Déjeme buscar sus datos.',
+    bn: 'আপনার তথ্য দেখে নিচ্ছি।',
+  },
+  register_patient: {
+    en: 'One moment while I register you.',
+    es: 'Un momento, le estoy registrando.',
+    bn: 'এক মুহূর্ত, আপনার নিবন্ধন করছি।',
+  },
+  check_availability: {
+    en: 'Let me check the schedule.',
+    es: 'Déjeme consultar la agenda.',
+    bn: 'সময়সূচি দেখে নিচ্ছি।',
+  },
+  default: {
+    en: 'One moment, please.',
+    es: 'Un momento, por favor.',
+    bn: 'এক মুহূর্ত, অনুগ্রহ করে অপেক্ষা করুন।',
+  },
+};
+
+/** Phrases at least this far apart, so a turn of quick tool calls says only one. */
+export const HOLDING_GAP_MS = 6000;
+
+/**
+ * Returns a tool-event handler that says a holding phrase when a tool starts: the
+ * first time in a turn, then again only after a gap, and never the same one twice.
+ * A handoff says nothing, because its own message follows straight away.
+ */
+export function holdingSpeaker(language, speak, { now = Date.now, gapMs = HOLDING_GAP_MS } = {}) {
+  let lastSpoken = null;
+  const said = new Set();
+  return ({ name }) => {
+    if (name === 'handoff_to_human') return;
+    if (lastSpoken !== null && now() - lastSpoken < gapMs) return;
+    const entry = HOLDING_PHRASES[name] ?? HOLDING_PHRASES.default;
+    const phrase = entry[language] ?? entry.en;
+    if (said.has(phrase)) return;
+    said.add(phrase);
+    lastSpoken = now();
+    speak(phrase);
+  };
+}
+
+/** The reply to speak, from a full agent turn. `speak` says holding phrases meanwhile. */
+async function completionText(deps, body, log, speak = () => {}) {
   // Sent while the assistant's metadataSendMode is "variable" (Vapi's default) or "destructured".
   if (!body.call?.id) {
     log.warn({ keys: Object.keys(body) }, 'vapi completion has no call id; check the assistant sends call metadata');
@@ -200,7 +250,14 @@ async function completionText(deps, body, log) {
     conversation = await conversationFor(deps, body);
     const text = newCallerText(body.messages);
     if (!text) return '';
-    const turn = await runTurn(deps, { conversationId: conversation.id, text });
+    const started = Date.now();
+    // The turn decides the language the same way, from the same words.
+    const onEvent = holdingSpeaker(detectLanguage(text, conversation.language), speak);
+    const turn = await runTurn(deps, { conversationId: conversation.id, text, onEvent });
+    log.info(
+      { callId: body.call.id, turnMs: Date.now() - started, handedOff: turn.handedOff, ...turn.timings },
+      'voice turn',
+    );
     return turn.reply ?? '';
   } catch (error) {
     log.error({ err: error, callId: body.call.id }, 'vapi completion failed');
@@ -210,17 +267,18 @@ async function completionText(deps, body, log) {
 
 /**
  * OpenAI's chat completions format, which is what Vapi speaks to a custom LLM. The
- * reply goes out in one chunk once the guards have passed it, as on every channel:
- * streaming word by word would let unchecked words reach the caller.
+ * stream opens at once, so holding phrases can be said while the turn runs. The reply
+ * itself goes out in one piece once the guards have passed all of it, as on every
+ * channel: streaming it word by word would let unchecked words reach the caller.
  */
 async function handleCompletion(deps, request, reply) {
   const body = request.body ?? {};
-  const text = await completionText(deps, body, request.log);
   const id = `chatcmpl-${randomUUID()}`;
   const created = Math.floor(Date.now() / 1000);
   const model = typeof body.model === 'string' ? body.model : 'receptionist';
 
   if (body.stream === false) {
+    const text = await completionText(deps, body, request.log);
     return {
       id,
       object: 'chat.completion',
@@ -233,14 +291,26 @@ async function handleCompletion(deps, request, reply) {
   const chunk = (delta, finishReason = null) =>
     `data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created, model, choices: [{ index: 0, delta, finish_reason: finishReason }] })}\n\n`;
   reply.hijack();
-  // The caller may have hung up or talked over the reply, and Vapi dropped the request.
-  if (reply.raw.destroyed) return reply;
-  reply.raw.writeHead(200, {
+  const out = reply.raw;
+  // The caller may hang up or talk over the agent, and Vapi then drops the request.
+  const write = (data) => {
+    if (!out.destroyed && !out.writableEnded) out.write(data);
+  };
+  out.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
   });
-  reply.raw.end(`${chunk({ role: 'assistant', content: text })}${chunk({}, 'stop')}data: [DONE]\n\n`);
+  let started = false;
+  const say = (text) => {
+    write(chunk(started ? { content: text } : { role: 'assistant', content: text }));
+    started = true;
+  };
+
+  const text = await completionText(deps, body, request.log, (phrase) => say(`${phrase} `));
+  say(text);
+  write(`${chunk({}, 'stop')}data: [DONE]\n\n`);
+  if (!out.destroyed && !out.writableEnded) out.end();
   return reply;
 }
 

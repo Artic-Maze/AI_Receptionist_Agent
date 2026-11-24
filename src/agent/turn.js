@@ -82,8 +82,15 @@ async function runModel(ctx, push, history, onEvent) {
 
   for (;;) {
     let response;
+    const started = Date.now();
     try {
       response = await llm.complete({ system, tools: LLM_TOOLS, messages: history, ...(effort ? { effort } : {}) });
+      const { timings } = turn;
+      timings.modelCalls += 1;
+      timings.modelMs += Date.now() - started;
+      timings.inputTokens += response.usage?.inputTokens ?? 0;
+      timings.cacheReadTokens += response.usage?.cacheReadTokens ?? 0;
+      timings.outputTokens += response.usage?.outputTokens ?? 0;
     } catch (error) {
       turn.forcedHandoff = { reason: 'llm_error', detail: error.message };
       return null;
@@ -219,7 +226,14 @@ async function runLocked(deps, { conversationId, text, externalId, onEvent = () 
     };
   }
 
-  const turn = { guardResults: [], verified: [], tools: [], forcedHandoff: null };
+  const turn = {
+    guardResults: [],
+    verified: [],
+    tools: [],
+    forcedHandoff: null,
+    // Where a turn's time goes, for the logs. Input tokens are the uncached ones.
+    timings: { modelCalls: 0, modelMs: 0, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0 },
+  };
   const patientTexts = await prisma.message
     .findMany({ where: { conversationId, role: 'user', kind: 'chat' }, orderBy: { id: 'asc' } })
     .then((rows) => [...rows.map((row) => row.content), text]);
@@ -289,6 +303,7 @@ async function runLocked(deps, { conversationId, text, externalId, onEvent = () 
     handedOff: Boolean(handoff),
     handoffReason: handoff?.reason,
     guardResults: turn.guardResults,
+    timings: turn.timings,
   };
 }
 

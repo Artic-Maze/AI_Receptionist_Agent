@@ -4,13 +4,15 @@ import { config } from '../src/config.js';
 import { VOICE_GOODBYE } from '../src/guards/handoff-triggers.js';
 
 /**
- * Speech in and out. Bangla narrows the choice: Google's transcriber lists Bengali and
- * a Multilingual mode, and of ElevenLabs' models only v3 speaks Bangla. Neither has
- * been tried on a real call yet, so both can be replaced with VAPI_TRANSCRIBER and
- * VAPI_VOICE, as JSON in Vapi's own format.
+ * Speech in and out, chosen for speed, in English and Spanish; calls don't take Bangla.
+ * Deepgram's Flux models decide when the caller has finished speaking from what they
+ * said, so Vapi skips its own fixed wait after the last word. Flash v2.5 is ElevenLabs'
+ * low-latency voice. Either can be replaced with VAPI_TRANSCRIBER and VAPI_VOICE, as
+ * JSON in Vapi's own format: {"provider":"deepgram","model":"flux-general-en"} is
+ * English only.
  */
-export const DEFAULT_TRANSCRIBER = { provider: 'google', language: 'Multilingual' };
-export const DEFAULT_VOICE = { provider: '11labs', model: 'eleven_v3', voiceId: 'sarah' };
+export const DEFAULT_TRANSCRIBER = { provider: 'deepgram', model: 'flux-general-multi', languages: ['en', 'es'] };
+export const DEFAULT_VOICE = { provider: '11labs', model: 'eleven_flash_v2_5', voiceId: 'sarah' };
 
 /**
  * The Vapi assistant: this server as its model, so every word it says has passed the
@@ -26,9 +28,7 @@ export function assistantConfig({
 }) {
   return {
     name: `${clinicName} receptionist`.slice(0, 40),
-    firstMessage:
-      `Hello, this is ${clinicName}. How can I help you today? ` +
-      'আপনি বাংলায়ও কথা বলতে পারেন। También puede hablar en español.',
+    firstMessage: `Hello, this is ${clinicName}. How can I help you today? También puede hablar en español.`,
     firstMessageMode: 'assistant-speaks-first',
     model: {
       provider: 'custom-llm',
@@ -54,11 +54,18 @@ export function assistantConfig({
 /** Creates the assistant, or updates it when there is an id. */
 export async function pushAssistant(body, { apiKey, assistantId, fetchImpl = fetch }) {
   const url = `https://api.vapi.ai/assistant${assistantId ? `/${encodeURIComponent(assistantId)}` : ''}`;
-  const response = await fetchImpl(url, {
-    method: assistantId ? 'PATCH' : 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: assistantId ? 'PATCH' : 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    // Node's own message is just "fetch failed"; the reason is in its cause.
+    const reason = error.cause?.code ?? error.cause?.message ?? error.message;
+    throw new Error(`Couldn't reach api.vapi.ai (${reason}). This needs internet access, which a container on an internal Docker network doesn't have.`);
+  }
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`Vapi answered ${response.status}: ${JSON.stringify(result.message ?? result)}`);
   return result;

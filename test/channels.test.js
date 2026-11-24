@@ -556,7 +556,8 @@ describe('channels', () => {
         llm.load([{ call: 'find_patient', input: { name: 'Rahim Uddin' } }, { say: 'Hello Rahim. Which doctor would you like to see?' }]);
         const response = await ask(app, completion([GREETING, { role: 'user', content: 'Hi, this is' }, { role: 'user', content: 'Rahim Uddin' }]));
 
-        assert.equal(spoken(response), 'Hello Rahim. Which doctor would you like to see?');
+        // The lookup starts with a holding phrase; the reply follows once the guards pass it.
+        assert.equal(spoken(response), 'Let me look up your details. Hello Rahim. Which doctor would you like to see?');
         const conversation = await prisma.conversation.findFirst({ where: { channel: 'vapi' } });
         assert.equal(conversation.externalId, 'call-llm');
         assert.equal(conversation.patientId, 'p1', 'caller ID and a name identify the patient');
@@ -564,6 +565,23 @@ describe('channels', () => {
         const patientMessages = llm.requests[0].filter((m) => m.role === 'user' && typeof m.content === 'string');
         assert.deepEqual(patientMessages.map((m) => m.content), ['Hi, this is Rahim Uddin']);
         assert.deepEqual([...new Set(llm.efforts)], ['low']);
+        await app.close();
+      });
+
+      it('says one holding phrase for a quick run of tools, and none for a handoff', async () => {
+        const { deps, llm } = await setup(prisma);
+        const app = await buildServer(deps, { vapiSecret: SECRET });
+        llm.load([
+          { call: 'find_patient', input: { name: 'Rahim Uddin' } },
+          { call: 'check_availability', input: { provider_id: 'dr_karim', date_from: '2026-11-10', date_to: '2026-11-10' } },
+          { say: 'Dr. Karim is free at 10:00 AM on Tuesday, 10 November. Shall I book it?' },
+        ]);
+        const booking = spoken(await ask(app, completion([GREETING, { role: 'user', content: 'Rahim Uddin, Dr. Karim on Tuesday' }])));
+        assert.equal(booking, 'Let me look up your details. Dr. Karim is free at 10:00 AM on Tuesday, 10 November. Shall I book it?');
+
+        llm.load([{ call: 'handoff_to_human', input: { reason: 'angry_user' } }]);
+        const handoff = spoken(await ask(app, completion([GREETING, { role: 'user', content: 'This is useless' }], { call: { id: 'call-angry' } })));
+        assert.doesNotMatch(handoff, /One moment|Let me/);
         await app.close();
       });
 

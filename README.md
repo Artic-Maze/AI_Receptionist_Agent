@@ -20,7 +20,7 @@ The evaluation suite is the product. Anyone can demo a booking; the harder quest
 | **Scenarios on a real model** | Not yet run | **First live run** |
 | Cal.com adapter | Contract suite against a stub written from the API docs | Contract run against a real sandbox |
 | WhatsApp | Tested with its documented payloads | Connecting a real account |
-| Vapi voice | Endpoint and assistant config checked against the types Vapi publishes. The call button was driven in headless Chrome as far as Vapi's API | **First real call**: Bangla speech recognition and voice, and how long a turn takes |
+| Vapi voice | Calls made on the live site, through the homepage's call button | **Waits**: the faster speech settings and holding phrases haven't been heard on a call yet, and the model's share isn't measured |
 
 A scripted run shows the guards hold when a model misbehaves. It says nothing about how well a real model handles these conversations, and the report says so at the top of any offline run.
 
@@ -46,7 +46,7 @@ flowchart TD
     A --> P
 ```
 
-Replies are never streamed word by word, because no text may reach the patient until the guards have passed all of it. When a conversation goes to staff, the patient's message is written in code rather than by the model, so a handoff can't carry a made-up time.
+Replies are never streamed word by word, because no text may reach the patient until the guards have passed all of it. On a call, that would mean silence while a turn runs its tools, so a holding phrase such as "Let me check the schedule." is said when a tool starts. Like the handoff messages, these phrases are written in code, not by the model, and claim nothing. When a conversation goes to staff, the patient's message is written in code rather than by the model, so a handoff can't carry a made-up time.
 
 ## The five guards
 
@@ -208,7 +208,13 @@ The homepage lists the doctors with their hours and this week's free times, whic
 
 1. Deploy, and set `PUBLIC_URL` to the server's https address. Vapi won't call localhost, so a local server needs a tunnel.
 2. Set `VAPI_SECRET` to a long random string, and `VAPI_API_KEY` to your private key from the Vapi dashboard.
-3. Run `npm run vapi:assistant` to see the assistant, then `npm run vapi:assistant -- --push` to create it. Put the id it prints in `VAPI_ASSISTANT_ID`, so later pushes update the same assistant.
+3. Run `npm run vapi:assistant` to see the assistant, then `npm run vapi:assistant -- --push` to create it. Put the id it prints in `VAPI_ASSISTANT_ID`, so later pushes update the same assistant. On a server deployed with `docker-compose.yml`, run it from the image the `migrate` step builds, on Docker's default network. The `migrate` service is only on the database network, which may have no internet access. `docker run --env-file` keeps quotes around values, so leave them out of `.env`:
+
+   ```bash
+   docker run --rm --env-file .env ai_receptionist_agent-migrate node scripts/vapi-assistant.js --push
+   ```
+
+   After setting `VAPI_ASSISTANT_ID`, run `docker compose up -d --force-recreate app` so the app picks it up.
 4. For phone calls, attach a phone number to the assistant in the Vapi dashboard. For calls from the homepage, also set `VAPI_PUBLIC_KEY`, and restrict that key to your site's origin and this assistant. The homepage then shows a **Call** button, and the call's transcript appears in the chat panel.
 
 What changes on a call:
@@ -216,7 +222,7 @@ What changes on a call:
 - **Caller ID is an identity hint**, as on WhatsApp. Browser calls have none.
 - **The model thinks less** (`LLM_VOICE_EFFORT`, default `low`), because the caller hears silence while it thinks. The guards are code, so they hold either way.
 - **A handoff ends the call.** The message tells the caller that staff will call back on their number, or, on a browser call, to call the clinic. It ends with "Goodbye", and the assistant hangs up on that word, as it does on the agent's own goodbye.
-- **Speech recognition and voice** are Google's transcriber in Multilingual mode and ElevenLabs v3, the options Vapi documents for Bangla. Neither has been tried on a real call. Set `VAPI_TRANSCRIBER` or `VAPI_VOICE` to replace them.
+- **Calls are in English and Spanish**, not Bangla, so speech can use the fast options. Speech recognition is Deepgram Flux, which decides when the caller has finished speaking from what they said, so Vapi adds no fixed wait after the last word. The voice is ElevenLabs Flash v2.5, their low-latency model. Set `VAPI_TRANSCRIBER` or `VAPI_VOICE` to replace them.
 
 The assistant has no server webhook, so the secret is sent only to this server: a browser caller can override an assistant's webhook, but not its model's URL. A phone-only assistant can add a webhook to `/vapi/events` to store Vapi's own transcripts.
 
@@ -239,7 +245,7 @@ The older setup still works, with Vapi's own model calling one `receptionist_tur
 - **Nobody is notified of a handoff.** Handoffs are recorded in a table, and there is no staff screen or alert yet. On a call, the caller is told staff will call back, so that needs one before real calls.
 - **Calls aren't transferred.** A handoff ends the call rather than putting the caller through to staff.
 - **Talking over the agent.** If a caller speaks before a turn has finished, the turn still completes, since a booking can't be half-made. Vapi drops the reply, and the model assumes the caller heard it.
-- **Silence while a turn runs.** A turn that checks availability and then books makes several model calls before anything is said. How long that takes on a real call hasn't been measured.
+- **Waiting on a call.** A turn that checks availability and then books makes several model calls in a row, and only a holding phrase fills the wait. Each voice turn is logged as `voice turn` with its model calls, model time and token counts (`docker compose logs app`). Vapi records the rest per turn, including speech recognition and voice, in each call's `artifact.performanceMetrics`.
 - **One server process.** Turns are serialised per conversation in memory. Several instances would need a shared lock.
 - **A crash can leave a booking unlogged.** Calendar and database can't commit atomically. A failed audit write undoes the booking, but a crash at that exact moment would not, and there is no reconciliation job.
 - **The audit trigger stops the application, not a database owner.** Production should run the app under a role that doesn't own the table.
