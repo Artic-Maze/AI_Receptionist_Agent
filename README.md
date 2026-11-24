@@ -46,7 +46,7 @@ flowchart TD
     A --> P
 ```
 
-Replies are never streamed word by word, because no text may reach the patient until the guards have passed all of it. When a conversation goes to staff, the patient's message is written in code rather than by the model, so a handoff can't carry a made-up time.
+Replies are never streamed word by word, because no text may reach the patient until the guards have passed all of it. On a call, that would mean silence while a turn runs its tools, so a holding phrase such as "Let me check the schedule." is said when a tool starts. Like the handoff messages, these phrases are written in code, not by the model, and claim nothing. When a conversation goes to staff, the patient's message is written in code rather than by the model, so a handoff can't carry a made-up time.
 
 ## The five guards
 
@@ -245,7 +245,7 @@ The older setup still works, with Vapi's own model calling one `receptionist_tur
 - **Nobody is notified of a handoff.** Handoffs are recorded in a table, and there is no staff screen or alert yet. On a call, the caller is told staff will call back, so that needs one before real calls.
 - **Calls aren't transferred.** A handoff ends the call rather than putting the caller through to staff.
 - **Talking over the agent.** If a caller speaks before a turn has finished, the turn still completes, since a booking can't be half-made. Vapi drops the reply, and the model assumes the caller heard it.
-- **Silence while a turn runs.** A turn that checks availability and then books makes several model calls before anything is said. How long that takes on a real call hasn't been measured.
+- **Waiting on a call.** A turn that checks availability and then books makes several model calls in a row, and only a holding phrase fills the wait. Each voice turn is logged as `voice turn` with its model calls, model time and token counts (`docker compose logs app`). Vapi records the rest per turn, including speech recognition and voice, in each call's `artifact.performanceMetrics`.
 - **One server process.** Turns are serialised per conversation in memory. Several instances would need a shared lock.
 - **A crash can leave a booking unlogged.** Calendar and database can't commit atomically. A failed audit write undoes the booking, but a crash at that exact moment would not, and there is no reconciliation job.
 - **The audit trigger stops the application, not a database owner.** Production should run the app under a role that doesn't own the table.

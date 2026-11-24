@@ -6,6 +6,7 @@ import { checkAvailabilityGrounding, loadGrounding } from '../src/guards/availab
 import { verifyBooking } from '../src/guards/booking-verify.js';
 import { checkConfirmation } from '../src/guards/confirmation-check.js';
 import { checkPatientMessage, handoffMessage, isMisunderstanding, VOICE_GOODBYE } from '../src/guards/handoff-triggers.js';
+import { HOLDING_PHRASES, holdingSpeaker } from '../src/channels/vapi.js';
 import { checkIdentityGate } from '../src/guards/identity-gate.js';
 import { extractDates, extractTimes, splitClauses } from '../src/guards/text-extract.js';
 import { parseLocal } from '../src/time.js';
@@ -561,6 +562,32 @@ describe('handoff triggers', () => {
         }
       }
     }
+  });
+
+  it('never lets a holding phrase make a claim either', () => {
+    for (const entry of Object.values(HOLDING_PHRASES)) {
+      for (const reply of Object.values(entry)) {
+        assert.equal(checkConfirmation({ reply, verified: [], now: NOW, tz: TZ }).ok, true, reply);
+        assert.equal(grounding({ reply }).ok, true, reply);
+      }
+    }
+  });
+
+  it('says a holding phrase when a tool starts, then only after a gap, never twice', () => {
+    let clock = 0;
+    const said = [];
+    const onTool = holdingSpeaker('en', (phrase) => said.push(phrase), { now: () => clock, gapMs: 6000 });
+    onTool({ name: 'find_patient' });
+    clock = 2000;
+    onTool({ name: 'check_availability' }); // too soon after the last phrase
+    clock = 9000;
+    onTool({ name: 'check_availability' });
+    clock = 20000;
+    onTool({ name: 'check_availability' }); // already said this turn
+    onTool({ name: 'create_booking' });
+    clock = 40000;
+    onTool({ name: 'handoff_to_human' });
+    assert.deepEqual(said, ['Let me look up your details.', 'Let me check the schedule.', 'One moment, please.']);
   });
 
   it('ends every handoff on a call with the goodbye that hangs up', () => {
