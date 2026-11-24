@@ -20,7 +20,7 @@ The evaluation suite is the product. Anyone can demo a booking; the harder quest
 | **Scenarios on a real model** | Not yet run | **First live run** |
 | Cal.com adapter | Contract suite against a stub written from the API docs | Contract run against a real sandbox |
 | WhatsApp | Tested with its documented payloads | Connecting a real account |
-| Vapi voice | Endpoint and assistant config checked against the types Vapi publishes. The call button was driven in headless Chrome as far as Vapi's API | **First real call**: Bangla speech recognition and voice, and how long a turn takes |
+| Vapi voice | Calls made on the live site, through the homepage's call button | **Waits**: the faster speech settings and holding phrases haven't been heard on a call yet, and the model's share isn't measured |
 
 A scripted run shows the guards hold when a model misbehaves. It says nothing about how well a real model handles these conversations, and the report says so at the top of any offline run.
 
@@ -222,7 +222,7 @@ What changes on a call:
 - **Caller ID is an identity hint**, as on WhatsApp. Browser calls have none.
 - **The model thinks less** (`LLM_VOICE_EFFORT`, default `low`), because the caller hears silence while it thinks. The guards are code, so they hold either way.
 - **A handoff ends the call.** The message tells the caller that staff will call back on their number, or, on a browser call, to call the clinic. It ends with "Goodbye", and the assistant hangs up on that word, as it does on the agent's own goodbye.
-- **Speech recognition and voice** are Google's transcriber in Multilingual mode and ElevenLabs v3, the options Vapi documents for Bangla. Neither has been tried on a real call. Set `VAPI_TRANSCRIBER` or `VAPI_VOICE` to replace them.
+- **Calls are in English and Spanish**, not Bangla, so speech can use the fast options. Speech recognition is Deepgram Flux, which decides when the caller has finished speaking from what they said, so Vapi adds no fixed wait after the last word. The voice is ElevenLabs Flash v2.5, their low-latency model. Set `VAPI_TRANSCRIBER` or `VAPI_VOICE` to replace them.
 
 The assistant has no server webhook, so the secret is sent only to this server: a browser caller can override an assistant's webhook, but not its model's URL. A phone-only assistant can add a webhook to `/vapi/events` to store Vapi's own transcripts.
 

@@ -30,6 +30,16 @@ describe('vapi assistant', () => {
     }
   });
 
+  it('listens with a transcriber that knows when the caller has finished', () => {
+    const { transcriber, voice, firstMessage } = assistantConfig(OPTIONS);
+    // A Flux model ends the turn itself, so Vapi adds no fixed wait after the last word.
+    assert.equal(transcriber.provider, 'deepgram');
+    assert.match(transcriber.model, /^flux-/);
+    assert.equal(voice.model, 'eleven_flash_v2_5');
+    // Calls are English and Spanish, so the greeting offers nothing else.
+    assert.doesNotMatch(firstMessage, /[\u0980-\u09FF]/);
+  });
+
   it('keeps the name within Vapi’s 40 characters', () => {
     assert.ok(assistantConfig({ ...OPTIONS, clinicName: 'A Very Long Clinic Name That Goes On And On' }).name.length <= 40);
   });
